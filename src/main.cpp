@@ -1,3 +1,4 @@
+#include "AST.h"
 #include <cassert>
 #include <cstdio>
 #include <iostream>
@@ -31,7 +32,8 @@ int main(int argc, const char *argv[]) {
   auto ret = yyparse(ast);
   assert(!ret);
 
-  // 输出解析得到的 AST, 其实就是个字符串
-  cout << *ast << endl;
+  // 输出解析得到的 AST
+  ast->dump();
+
   return 0;
 }

@@ -1,2 +1,4 @@
 build
-temp.txt
+local_password
+.vscode
+debug
