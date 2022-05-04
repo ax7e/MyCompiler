@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 project(compiler)
+set (CMAKE_CXX_STANDARD 20)
 
 # settings
 # set to OFF to enable C mode
@@ -18,6 +19,8 @@ else()
   # disable warnings caused by old version of Flex
   add_compile_options(-Wall -Wno-register)
 endif()
+
+add_compile_options(-g)
 
 # options about libraries and includes
 set(LIB_DIR "$ENV{CDE_LIBRARY_PATH}/native" CACHE STRING "directory of libraries")
@@ -55,9 +58,9 @@ file(GLOB_RECURSE CC_SOURCES "src/*.cc")
 set(SOURCES ${C_SOURCES} ${CXX_SOURCES} ${CC_SOURCES}
             ${FLEX_Lexer_OUTPUTS} ${BISON_Parser_OUTPUT_SOURCE})
 
-# executable
-add_executable(compiler ${SOURCES})
-set_target_properties(compiler PROPERTIES C_STANDARD 11 CXX_STANDARD 17)
-target_link_libraries(compiler koopa pthread dl)
 
-add_subdirectory("${PROJECT_SOURCE_DIR}/src/include/fmt")
+# executable
+add_subdirectory(include/fmt)
+add_executable(compiler ${SOURCES})
+# set_target_properties(compiler PROPERTIES C_STANDARD 11 CXX_STANDARD 20)
+target_link_libraries(compiler koopa pthread dl fmt::fmt)
