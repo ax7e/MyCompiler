@@ -23,6 +23,7 @@ int main(int argc, const char *argv[]) {
   auto mode = argv[1];
   auto input = argv[2];
   auto output = argv[4];
+  assert(strncmp("-koopa", mode, 6) == 0);
 
   // 打开输入文件, 并且指定 lexer 在解析的时候读取这个文件
   yyin = fopen(input, "r");
@@ -33,6 +34,8 @@ int main(int argc, const char *argv[]) {
   auto ret = yyparse(ast);
   assert(!ret);
 
-  fmt::print("Abstract Syntax tree :\n{}\n", *ast);
+  auto yyout = fopen(output, "w");
+
+  fmt::print(yyout, "{}", *ast);
   return 0;
 }

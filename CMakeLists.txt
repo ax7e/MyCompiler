@@ -63,4 +63,5 @@ set(SOURCES ${C_SOURCES} ${CXX_SOURCES} ${CC_SOURCES}
 add_subdirectory(include/fmt)
 add_executable(compiler ${SOURCES})
 # set_target_properties(compiler PROPERTIES C_STANDARD 11 CXX_STANDARD 20)
-target_link_libraries(compiler koopa pthread dl fmt::fmt)
+target_link_libraries(compiler koopa pthread dl)
+target_link_libraries(compiler fmt::fmt)

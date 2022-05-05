@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <vector>
 
+using std::endl;
 using std::string;
 using std::unique_ptr;
 
@@ -33,10 +34,7 @@ template <> struct fmt::formatter<BaseTypes> : fmt::formatter<std::string> {
     string name;
     switch (a) {
     case BaseTypes::Integer:
-      name = "Int";
-      break;
-    case BaseTypes::FloatNumber:
-      name = "Float";
+      name = "i32";
       break;
     default:
       throw format_error("invalid type");
@@ -48,11 +46,7 @@ template <> struct fmt::formatter<BaseTypes> : fmt::formatter<std::string> {
 class CompUnitAST : public BaseAST {
 public:
   unique_ptr<BaseAST> _funcDef;
-  string dump() const override {
-    auto out = fmt::memory_buffer();
-    format_to(std::back_inserter(out), "CompUnitAST {{ {} }}", *_funcDef);
-    return string(out.data());
-  }
+  string dump() const override { return fmt::format("{}", *_funcDef); }
 };
 
 class FuncDefAST : public BaseAST {
@@ -61,8 +55,7 @@ public:
   std::string _ident;
   unique_ptr<BaseAST> _block;
   string dump() const override {
-    return fmt::format("FuncDefAST {{ {}, {}, {} }}", *_funcType, _ident,
-                       *_block);
+    return fmt::format("fun @{}: {} {{\n{}}}", _ident, *_funcType, *_block);
   }
 };
 
@@ -71,30 +64,24 @@ class StmtAST;
 class BlockAST : public BaseAST {
 public:
   unique_ptr<BaseAST> _stmt;
-  string dump() const override {
-    return fmt::format("BlockAST {{ {} }}", *_stmt);
-  }
+  string dump() const override { return fmt::format("@entry:\t{}", *_stmt); }
 };
 
 class NumberAST;
 class StmtAST : public BaseAST {
 public:
   unique_ptr<BaseAST> _number;
-  string dump() const override {
-    return fmt::format("StmtAST {{ {} }}", *_number);
-  }
+  string dump() const override { return fmt::format("ret {}\n", *_number); }
 };
 
 class NumberAST : public BaseAST {
 public:
   int value;
-  string dump() const override { return fmt::format("Number {{ {} }}", value); }
+  string dump() const override { return fmt::format("{}", value); }
 };
 
 class FuncTypeAST : public BaseAST {
 public:
   BaseTypes _type;
-  string dump() const override {
-    return fmt::format("FuncTypeAST {{ {} }}", _type);
-  }
+  string dump() const override { return fmt::format("{}", _type); }
 };
