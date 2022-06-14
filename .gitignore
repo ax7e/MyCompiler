@@ -3,3 +3,4 @@ local_password
 .vscode
 debug
 src/include/fmt/build
+0.out
