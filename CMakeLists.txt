@@ -12,6 +12,11 @@ else()
 endif()
 message(STATUS "Flex/Bison generated source file extension: ${FB_EXT}")
 
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+message(STATUS "Flex/Bison set debug mode")
+add_compile_definitions(YYDEBUG=1)
+endif()
+
 # enable all warnings
 if(MSVC)
   add_compile_options(/W3)
@@ -32,7 +37,7 @@ message(STATUS "Include directory: ${INC_DIR}")
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
 
-# generate lexer/parser
+# generaadd_definitions(-Dhehe_test)
 file(GLOB_RECURSE L_SOURCES "src/*.l")
 file(GLOB_RECURSE Y_SOURCES "src/*.y")
 if(NOT (L_SOURCES STREQUAL "" AND Y_SOURCES STREQUAL ""))
@@ -42,6 +47,7 @@ if(NOT (L_SOURCES STREQUAL "" AND Y_SOURCES STREQUAL ""))
   bison_target(Parser ${Y_SOURCES} ${Y_OUTPUTS})
   add_flex_bison_dependency(Lexer Parser)
 endif()
+
 
 # project link directories
 link_directories(${LIB_DIR})

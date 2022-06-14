@@ -6,7 +6,7 @@
 
 #include <cstdlib>
 #include <string>
-#include "AST.h"
+#include "AST.hpp"
 
 // 因为 Flex 会用到 Bison 中关于 token 的定义
 // 所以需要 include Bison 生成的头文件
@@ -19,6 +19,7 @@ using namespace std;
 /* 空白符和注释 */
 WhiteSpace    [ \t\n\r]*
 LineComment   "//".*$
+CrossLineComment "/*"([^\*]|(\*+[^\*\/]))*\*\/
 
 /* 标识符 */
 Identifier    [a-zA-Z_][a-zA-Z0-9_]*
@@ -28,10 +29,14 @@ Decimal       [1-9][0-9]*
 Octal         0[0-7]*
 Hexadecimal   0[xX][0-9a-fA-F]+
 
+RelOp         [<|>][=]?
+EqOp          [=|!][=]
+
 %%
 
 {WhiteSpace}    { /* 忽略, 不做任何操作 */ }
 {LineComment}   { /* 忽略, 不做任何操作 */ }
+{CrossLineComment}   { /* 忽略, 不做任何操作 */ }
 
 "int"           { return INT; }
 "return"        { return RETURN; }
@@ -42,6 +47,14 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Hexadecimal}   { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 
+
+{RelOp}         { yylval.str_val = new string(yytext); return REL_OP; }
+{EqOp}          { yylval.str_val = new string(yytext); return EQ_OP; }
+"&&"            { yylval.str_val = new string(yytext); return AND_CONST; }
+"||"            { yylval.str_val = new string(yytext); return OR_CONST; }
+
 .               { return yytext[0]; }
+
+{}
 
 %%

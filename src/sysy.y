@@ -3,14 +3,15 @@
   #include <string>
 }
 
+%define parse.trace
+
 %{
 
 #include <iostream>
 #include <memory>
 #include <string>
-#include "AST.h"
+#include "AST.hpp"
 
-// 声明 lexer 函数和错误处理函数
 int yylex();
 void yyerror(std::unique_ptr<BaseAST> &ast, const char *s);
 
@@ -36,12 +37,13 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN
-%token <str_val> IDENT
+%token INT RETURN  AND_CONST OR_CONST
+%token <str_val> IDENT REL_OP EQ_OP
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Block Stmt Number
+%type <str_val> UnaryOp 
+%type <ast_val> FuncDef FuncType Block Stmt Number Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp 
 
 %%
 
@@ -52,9 +54,9 @@ using namespace std;
 // $1 指代规则里第一个符号的返回值, 也就是 FuncDef 的返回值
 CompUnit
   : FuncDef {
-    auto comp_unit = make_unique<CompUnitAST>(); 
-    comp_unit->_funcDef = unique_ptr<BaseAST>($1); 
-    ast = std::move(comp_unit); 
+    auto compUnit = new CompUnitAST(); 
+    compUnit->_funcDef = unique_ptr<BaseAST>($1); 
+    ast = unique_ptr<BaseAST>(compUnit); 
   }
   ;
 
@@ -69,10 +71,9 @@ FuncDef
   }
   ;
 
-// 同上, 不再解释
 FuncType
   : INT {
-    auto ast = new FuncTypeAST(); 
+    auto ast = new FuncTypeAST();
     ast->_type = BaseTypes::Integer; 
     $$ = ast;
   }
@@ -87,12 +88,117 @@ Block
   ;
 
 Stmt
-  : RETURN Number ';' {
+  : RETURN Exp ';' {
     auto ast = new StmtAST(); 
-    ast->_number = unique_ptr<BaseAST>($2);
+    ast->_expr = unique_ptr<BaseAST>($2);
     $$ = ast;
   }
   ;
+
+Exp 
+  : LOrExp {
+    $$ = $1;
+  }
+  ;
+
+LOrExp 
+  : LAndExp {
+    $$ = $1; 
+  }
+  | LOrExp OR_CONST LAndExp {
+    $$ = concat("||", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  ;
+
+LAndExp 
+  : EqExp {
+    $$ = $1;
+  } 
+  | LAndExp AND_CONST EqExp {
+    $$ = concat("&&", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  ;
+
+EqExp 
+  : RelExp {
+    $$ = $1;
+  } 
+  | EqExp EQ_OP RelExp {
+    $$ = concat(*unique_ptr<string>($2), unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  ;
+
+RelExp 
+  : AddExp {
+    $$ = $1;
+  } 
+  | RelExp REL_OP AddExp {
+    $$ = concat(*unique_ptr<string>($2), unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  ;
+
+
+AddExp 
+  : MulExp {
+    $$ = $1;
+  } 
+  | AddExp '+' MulExp {
+    $$ = concat("+", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  | AddExp '-' MulExp {
+    $$ = concat("-", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  ;
+
+MulExp 
+  : UnaryExp {
+    $$ = $1;
+  } 
+  | MulExp '*' UnaryExp {
+    $$ = concat("*", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  | MulExp '/' UnaryExp {
+    $$ = concat("/", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  | MulExp '%' UnaryExp {
+    $$ = concat("%", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  }
+  ;
+
+UnaryOp 
+  : '+' {
+    $$ = new string("+");
+  }
+  | '-' {
+    $$ = new string("-");
+  }
+  | '!' {
+    $$ = new string("!");
+  }
+  ;
+
+PrimaryExp 
+  : '(' Exp ')' {
+    $$ = $2;
+  }
+  | Number {
+    auto ast = new ExprAST(); 
+    ast->_type = ExpTypes::Const;
+    ast->_l = unique_ptr<BaseAST>($1); 
+    $$ = ast; 
+  }
+
+UnaryExp
+  : PrimaryExp {
+    $$ = $1;
+  }
+  | UnaryOp UnaryExp {
+    auto ast = new ExprAST(); 
+    ast->_op = *unique_ptr<string>($1); 
+    ast->_type = ExpTypes::Unary;
+    ast->_l = unique_ptr<BaseAST>($2); 
+    $$ = ast; 
+  }
 
 Number
   : INT_CONST {
