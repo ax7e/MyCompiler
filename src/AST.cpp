@@ -22,6 +22,6 @@ BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r)
 }
 
 const map<string, string> ExprAST::table_binary = {
-    {"+", "add"}, {"-", "sub"}, {"*", "mul"}, {"/", "div"}, {"%", "mod"}, {">", "gt"}, {"<", "lt"}, {"<=", "le"}, {">=", "ge"}, {"==", "eq"}, {"!=", "neq"}, {"&&", "and"}, {"||", "or"}};
+    {"+", "add"}, {"-", "sub"}, {"*", "mul"}, {"/", "div"}, {"%", "mod"}, {">", "gt"}, {"<", "lt"}, {"<=", "le"}, {">=", "ge"}, {"==", "eq"}, {"!=", "ne"}};
 const map<string, string> ExprAST::table_unary = {
     {"+", "add"}, {"-", "sub"}, {"!", "eq"}};

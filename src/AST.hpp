@@ -139,6 +139,10 @@ public:
   unique_ptr<BaseAST> _l, _r;
   string dump() const override
   {
+    if (_type == ExpTypes::Const)
+    {
+      return format("{}", *_l);
+    }
     assert(_id != -1);
     return format("%{}", _id);
   }
@@ -151,12 +155,11 @@ public:
       ExprAST &l = dynamic_cast<ExprAST &>(*_l);
       calc_l = l.dump_inst();
       _id = GetSlotAllocator().getSlot();
-      calc = format("\t%{} = {} 0, {}\n", table_unary.at(_op), _id, _l->dump());
+      calc = format("\t%{} = {} 0, {}\n", _id, table_unary.at(_op), _l->dump());
     }
     else if (_type == ExpTypes::Const)
     {
-      _id = GetSlotAllocator().getSlot();
-      calc = format("\t%{} = {}\n", _id, _l->dump());
+      calc = "";
     }
     else if (_type == ExpTypes::Binary)
     {
@@ -166,7 +169,24 @@ public:
       calc_l = l.dump_inst();
       calc_r = r.dump_inst();
       _id = GetSlotAllocator().getSlot();
-      calc = format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
+      if (_op == "||")
+      {
+        auto tid = GetSlotAllocator().getSlot();
+        calc = format("\t%{} = or {}, {}\n", tid, _l->dump(), _r->dump());
+        calc += format("\t%{} = ne %{}, 0\n", _id, tid);
+      }
+      else if (_op == "&&")
+      {
+        auto tid1 = GetSlotAllocator().getSlot();
+        auto tid2 = GetSlotAllocator().getSlot();
+        calc += format("\t%{} = ne {}, 0\n", tid1, _l->dump());
+        calc += format("\t%{} = ne {}, 0\n", tid2, _r->dump());
+        calc += format("\t%{} = and %{}, %{}\n", _id, tid1, tid2);
+      }
+      else
+      {
+        calc = format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
+      }
     }
     return format("{}{}{}", calc_l, calc_r, calc);
   }
