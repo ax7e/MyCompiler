@@ -29,13 +29,8 @@ Decimal       [1-9][0-9]*
 Octal         0[0-7]*
 Hexadecimal   0[xX][0-9a-fA-F]+
 
-/* 操作符 */
-LeqConst      "<="
-GeqConst      ">="
-EqConst       "=="
-NeqConst      "!="
-AndConst      "&&"
-OrConst       "||"
+RelOp         [<|>][=]?
+EqOp          [=|!][=]
 
 %%
 
@@ -52,14 +47,13 @@ OrConst       "||"
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Hexadecimal}   { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 
-.               { return yytext[0]; }
 
-{AndConst}      { return AND_CONST; }
-{OrConst}      { return OR_CONST; }
-{LeqConst}      { return LEQ_CONST; }
-{EqConst}      { return EQ_CONST; }
-{NeqConst}      { return NEQ_CONST; }
-{GeqConst}      { return GEQ_CONST; }
+{RelOp}         { yylval.str_val = new string(yytext); return REL_OP; }
+{EqOp}          { yylval.str_val = new string(yytext); return EQ_OP; }
+"&&"            { yylval.str_val = new string(yytext); return AND_CONST; }
+"||"            { yylval.str_val = new string(yytext); return OR_CONST; }
+
+.               { return yytext[0]; }
 
 {}
 

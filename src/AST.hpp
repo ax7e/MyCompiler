@@ -7,10 +7,12 @@
 #include <type_traits>
 #include <vector>
 #include <cassert>
+#include <map>
 
 using fmt::format;
 using fmt::formatter;
 using std::endl;
+using std::map;
 using std::string;
 using std::unique_ptr;
 
@@ -50,6 +52,12 @@ public:
   virtual ~BaseAST() = default;
   virtual string dump() const = 0;
 };
+
+#ifdef YYDEBUG
+#define Debugprint(x) fmt::print(x)
+#else
+#define Debugprint(x)
+#endif
 
 namespace fmt
 {
@@ -113,7 +121,7 @@ public:
   string dump() const override
   {
     GetSlotAllocator().clear();
-    return format("%entry:\n\t{}", *_stmt);
+    return format("%entry:\n{}", *_stmt);
   }
 };
 
@@ -121,6 +129,9 @@ class NumberAST;
 
 class ExprAST : public BaseAST
 {
+  static const map<string, string> table_binary;
+  static const map<string, string> table_unary;
+
 public:
   ExpTypes _type;
   string _op;
@@ -133,34 +144,29 @@ public:
   }
   string dump_inst() const
   {
-    assert(_type == ExpTypes::Unary || _type == ExpTypes::Const);
     string calc_l, calc_r, calc;
     if (_type == ExpTypes::Unary)
     {
       assert(typeid(*_l) == typeid(ExprAST));
       ExprAST &l = dynamic_cast<ExprAST &>(*_l);
-      if (_op == "+")
-      {
-        _id = l._id;
-      }
-      else
-      {
-        _id = GetSlotAllocator().getSlot();
-        calc_l = l.dump_inst();
-        if (_op == "!")
-        {
-          calc = format("%{} = eq {}, 0\n", _id, _l->dump());
-        }
-        if (_op == "-")
-        {
-          calc = format("%{} = sub 0, {}\n", _id, _l->dump());
-        }
-      }
+      calc_l = l.dump_inst();
+      _id = GetSlotAllocator().getSlot();
+      calc = format("\t%{} = {} 0, {}\n", table_unary.at(_op), _id, _l->dump());
     }
     else if (_type == ExpTypes::Const)
     {
       _id = GetSlotAllocator().getSlot();
-      calc = format("%{} = {}\n", _id, _l->dump());
+      calc = format("\t%{} = {}\n", _id, _l->dump());
+    }
+    else if (_type == ExpTypes::Binary)
+    {
+      assert(typeid(*_l) == typeid(ExprAST));
+      ExprAST &l = dynamic_cast<ExprAST &>(*_l);
+      ExprAST &r = dynamic_cast<ExprAST &>(*_r);
+      calc_l = l.dump_inst();
+      calc_r = r.dump_inst();
+      _id = GetSlotAllocator().getSlot();
+      calc = format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
     }
     return format("{}{}{}", calc_l, calc_r, calc);
   }
@@ -174,7 +180,9 @@ public:
   string dump() const override
   {
     assert(typeid(*_expr) == typeid(ExprAST));
-    return format("{}\nret %{}\n", expr().dump_inst(), _expr->dump());
+    auto inst = expr().dump_inst();
+    auto id = expr().dump();
+    return format("{}\tret {}\n", inst, id);
   }
 };
 
@@ -192,4 +200,4 @@ public:
   string dump() const override { return format("{}", _type); }
 };
 
-BaseAST *concat(const char *op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r);
+BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r);

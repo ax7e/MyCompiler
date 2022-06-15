@@ -11,7 +11,7 @@ SlotAllocator &GetSlotAllocator()
   return alloc;
 }
 
-BaseAST *concat(const char *op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r)
+BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r)
 {
   auto ast = new ExprAST();
   ast->_l = move(l);
@@ -20,3 +20,8 @@ BaseAST *concat(const char *op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r)
   ast->_type = ExpTypes::Binary;
   return ast;
 }
+
+const map<string, string> ExprAST::table_binary = {
+    {"+", "add"}, {"-", "sub"}, {"*", "mul"}, {"/", "div"}, {"%", "mod"}, {">", "gt"}, {"<", "lt"}, {"<=", "le"}, {">=", "ge"}, {"==", "eq"}, {"!=", "neq"}, {"&&", "and"}, {"||", "or"}};
+const map<string, string> ExprAST::table_unary = {
+    {"+", "add"}, {"-", "sub"}, {"!", "eq"}};

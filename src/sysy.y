@@ -37,12 +37,12 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN AND_CONST OR_CONST LEQ_CONST EQ_CONST GEQ_CONST NEQ_CONST 
-%token <str_val> IDENT 
+%token INT RETURN  AND_CONST OR_CONST
+%token <str_val> IDENT REL_OP EQ_OP
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <str_val> UnaryOp
+%type <str_val> UnaryOp 
 %type <ast_val> FuncDef FuncType Block Stmt Number Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp 
 
 %%
@@ -123,11 +123,8 @@ EqExp
   : RelExp {
     $$ = $1;
   } 
-  | EqExp EQ_CONST RelExp {
-    $$ = concat("==", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
-  }
-  | EqExp NEQ_CONST RelExp {
-    $$ = concat("!=", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  | EqExp EQ_OP RelExp {
+    $$ = concat(*unique_ptr<string>($2), unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
   }
   ;
 
@@ -135,29 +132,20 @@ RelExp
   : AddExp {
     $$ = $1;
   } 
-  | RelExp "<" AddExp {
-    $$ = concat("<", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
-  }
-  | RelExp ">" AddExp {
-    $$ = concat(">", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
-  }
-  | RelExp LEQ_CONST AddExp {
-    $$ = concat("<=", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
-  }
-  | RelExp GEQ_CONST AddExp {
-    $$ = concat(">=", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+  | RelExp REL_OP AddExp {
+    $$ = concat(*unique_ptr<string>($2), unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
   }
   ;
 
-  
+
 AddExp 
   : MulExp {
     $$ = $1;
   } 
-  | EqExp "+" MulExp {
+  | AddExp '+' MulExp {
     $$ = concat("+", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
   }
-  | EqExp "-" MulExp {
+  | AddExp '-' MulExp {
     $$ = concat("-", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
   }
   ;
@@ -166,31 +154,31 @@ MulExp
   : UnaryExp {
     $$ = $1;
   } 
-  | MulExp "*" UnaryExp {
+  | MulExp '*' UnaryExp {
     $$ = concat("*", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
   }
-  | MulExp "/" UnaryExp {
+  | MulExp '/' UnaryExp {
     $$ = concat("/", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
   }
-  | MulExp "%" UnaryExp {
+  | MulExp '%' UnaryExp {
     $$ = concat("%", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
   }
   ;
 
 UnaryOp 
-  : "+" {
+  : '+' {
     $$ = new string("+");
   }
-  | "-" {
+  | '-' {
     $$ = new string("-");
   }
-  | "!" {
+  | '!' {
     $$ = new string("!");
   }
   ;
 
 PrimaryExp 
-  : "(" Exp ")" {
+  : '(' Exp ')' {
     $$ = $2;
   }
   | Number {
