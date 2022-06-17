@@ -21,6 +21,11 @@ BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r)
   return ast;
 }
 
+BaseTypes parse_type(const string &t)
+{
+  return BaseTypes::Integer;
+}
+
 const map<string, string> ExprAST::table_binary = {
     {"+", "add"}, {"-", "sub"}, {"*", "mul"}, {"/", "div"}, {"%", "mod"}, {">", "gt"}, {"<", "lt"}, {"<=", "le"}, {">=", "ge"}, {"==", "eq"}, {"!=", "ne"}};
 const map<string, string> ExprAST::table_unary = {

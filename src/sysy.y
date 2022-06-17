@@ -13,7 +13,7 @@
 #include "AST.hpp"
 
 int yylex();
-void yyerror(std::unique_ptr<BaseAST> &ast, const char *s);
+void yyerror(PBase &ast, const char *s);
 
 using namespace std;
 
@@ -22,7 +22,7 @@ using namespace std;
 // 定义 parser 函数和错误处理函数的附加参数
 // 我们需要返回一个字符串作为 AST, 所以我们把附加参数定义成字符串的智能指针
 // 解析完成后, 我们要手动修改这个参数, 把它设置成解析得到的字符串
-%parse-param { std::unique_ptr<BaseAST> &ast }
+%parse-param { PBase &ast }
 
 // yylval 的定义, 我们把它定义成了一个联合体 (union)
 // 因为 token 的值有的是字符串指针, 有的是整数
@@ -33,17 +33,23 @@ using namespace std;
   std::string *str_val;
   int int_val;
   BaseAST *ast_val; 
+  std::vector<PBase > *vec_val;
 }
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN  AND_CONST OR_CONST
+%token INT RETURN  AND_CONST OR_CONST CONST
 %token <str_val> IDENT REL_OP EQ_OP
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <str_val> UnaryOp 
-%type <ast_val> FuncDef FuncType Block Stmt Number Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp 
+%type <str_val> UnaryOp BType LVal
+%type <ast_val> FuncDef FuncType Block Stmt Number  
+%type <ast_val> Decl ConstDecl ConstDef ConstInitVal ConstExp
+%type <ast_val> MulExp AddExp RelExp EqExp LAndExp LOrExp Exp PrimaryExp UnaryExp
+%type <vec_val> BlockItemList ConstDefList VarDefList
+%type <ast_val> VarDecl VarDef InitVal BlockItem
+
 
 %%
 
@@ -55,8 +61,8 @@ using namespace std;
 CompUnit
   : FuncDef {
     auto compUnit = new CompUnitAST(); 
-    compUnit->_funcDef = unique_ptr<BaseAST>($1); 
-    ast = unique_ptr<BaseAST>(compUnit); 
+    compUnit->_funcDef = PBase($1); 
+    ast = PBase(compUnit); 
   }
   ;
 
@@ -64,9 +70,9 @@ CompUnit
 FuncDef
   : FuncType IDENT '(' ')' Block {
     auto ast = new FuncDefAST(); 
-    ast->_funcType = unique_ptr<BaseAST>($1); 
+    ast->_funcType = PBase($1); 
     ast->_ident = *unique_ptr<string>($2); 
-    ast->_block = unique_ptr<BaseAST>($5);
+    ast->_block = PBase($5);
     $$ = ast;
   }
   ;
@@ -80,9 +86,9 @@ FuncType
   ;
 
 Block
-  : '{' Stmt '}' {
+  : '{' BlockItemList '}' {
     auto ast = new BlockAST();
-    ast->_stmt = unique_ptr<BaseAST>($2);
+    ast->_list = move(*unique_ptr<vector<PBase>>($2));
     $$ = ast; 
   }
   ;
@@ -90,7 +96,7 @@ Block
 Stmt
   : RETURN Exp ';' {
     auto ast = new StmtAST(); 
-    ast->_expr = unique_ptr<BaseAST>($2);
+    ast->_expr = PBase($2);
     $$ = ast;
   }
   ;
@@ -106,7 +112,7 @@ LOrExp
     $$ = $1; 
   }
   | LOrExp OR_CONST LAndExp {
-    $$ = concat("||", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat("||", PBase($1), PBase($3)); 
   }
   ;
 
@@ -115,7 +121,7 @@ LAndExp
     $$ = $1;
   } 
   | LAndExp AND_CONST EqExp {
-    $$ = concat("&&", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat("&&", PBase($1), PBase($3)); 
   }
   ;
 
@@ -124,7 +130,7 @@ EqExp
     $$ = $1;
   } 
   | EqExp EQ_OP RelExp {
-    $$ = concat(*unique_ptr<string>($2), unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat(*unique_ptr<string>($2), PBase($1), PBase($3)); 
   }
   ;
 
@@ -133,7 +139,7 @@ RelExp
     $$ = $1;
   } 
   | RelExp REL_OP AddExp {
-    $$ = concat(*unique_ptr<string>($2), unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat(*unique_ptr<string>($2), PBase($1), PBase($3)); 
   }
   ;
 
@@ -143,10 +149,10 @@ AddExp
     $$ = $1;
   } 
   | AddExp '+' MulExp {
-    $$ = concat("+", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat("+", PBase($1), PBase($3)); 
   }
   | AddExp '-' MulExp {
-    $$ = concat("-", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat("-", PBase($1), PBase($3)); 
   }
   ;
 
@@ -155,13 +161,13 @@ MulExp
     $$ = $1;
   } 
   | MulExp '*' UnaryExp {
-    $$ = concat("*", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat("*", PBase($1), PBase($3)); 
   }
   | MulExp '/' UnaryExp {
-    $$ = concat("/", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat("/", PBase($1), PBase($3)); 
   }
   | MulExp '%' UnaryExp {
-    $$ = concat("%", unique_ptr<BaseAST>($1), unique_ptr<BaseAST>($3)); 
+    $$ = concat("%", PBase($1), PBase($3)); 
   }
   ;
 
@@ -184,7 +190,13 @@ PrimaryExp
   | Number {
     auto ast = new ExprAST(); 
     ast->_type = ExpTypes::Const;
-    ast->_l = unique_ptr<BaseAST>($1); 
+    ast->_l = PBase($1); 
+    $$ = ast; 
+  }
+  | LVal {
+    auto ast = new ExprAST(); 
+    ast->_type = ExpTypes::LVal;
+    ast->_ident = *unique_ptr<string>($1);
     $$ = ast; 
   }
 
@@ -196,7 +208,7 @@ UnaryExp
     auto ast = new ExprAST(); 
     ast->_op = *unique_ptr<string>($1); 
     ast->_type = ExpTypes::Unary;
-    ast->_l = unique_ptr<BaseAST>($2); 
+    ast->_l = PBase($2); 
     $$ = ast; 
   }
 
@@ -208,10 +220,126 @@ Number
   }
   ;
 
+Decl
+  : ConstDecl {
+    $$ = $1;
+  }
+  | VarDecl {
+    $$ = $1;
+  }
+  ;
+
+ConstDecl
+  : CONST BType ConstDefList ';' {
+    auto ast = new DeclAST(
+      DeclTypes::Const, 
+      parse_type(*unique_ptr<string>($2)), 
+      unique_ptr<vector<PBase>>($3));
+    $$ = ast;
+  }
+
+BType
+  : INT {
+    string *b_type = new string("int");
+    $$ = b_type;
+  }
+
+
+ConstDef
+  : IDENT '=' ConstInitVal {
+    auto ast = new DefAST(
+      *unique_ptr<string>($1), // ident
+      PBase($3)); // init
+    $$ = ast;
+  }
+
+ConstInitVal
+  : ConstExp {
+    $$ = $1;
+  }
+
+LVal 
+  : IDENT {
+    $$ = $1;
+  }
+
+ConstExp 
+  : Exp {
+    $$ = $1;
+  }
+
+VarDecl
+  : BType VarDefList ';' {
+    auto ast = new DeclAST(
+      DeclTypes::Variable, 
+      parse_type(*unique_ptr<string>($1)), 
+      unique_ptr<vector<PBase>>($2));
+    $$ = ast;
+  }
+
+VarDef
+  : IDENT {
+    auto ast = new DefAST(*unique_ptr<string>($1));
+    $$ = ast;
+  }
+  | IDENT '=' InitVal {
+    auto ast = new DefAST(*unique_ptr<string>($1), PBase($3));
+    $$ = ast;
+  }
+
+InitVal 
+  : Exp {
+    $$ = $1;
+  }
+
+ConstDefList
+  : ConstDef {
+    vector<PBase > *v = new vector<PBase >;
+    v->push_back(PBase($1));
+    $$ = v;
+  }
+  | ConstDefList ',' ConstDef {
+    vector<PBase > *v = ($1);
+    v->push_back(PBase($3));
+    $$ = v;
+  }
+  ;
+
+VarDefList
+  : VarDef {
+    vector<PBase > *v = new vector<PBase >;
+    v->push_back(PBase($1));
+    $$ = v;
+  }
+  | VarDefList ',' VarDef {
+    vector<PBase > *v = ($1);
+    v->push_back(PBase($3));
+    $$ = v;
+  }
+
+BlockItem 
+  : Decl {
+    $$ = $1;
+  }
+  | Stmt {
+    $$ = $1;
+  }
+
+BlockItemList
+  : {
+    vector<PBase> *v = new vector<PBase>(); 
+    $$ = v;
+  }
+  | BlockItemList BlockItem {
+    auto v = $1;
+    v->push_back(PBase($2));
+    $$ = v;
+  }
+
 %%
 
 // 定义错误处理函数, 其中第二个参数是错误信息
 // parser 如果发生错误 (例如输入的程序出现了语法错误), 就会调用这个函数
-void yyerror(unique_ptr<BaseAST> &ast, const char *s) {
+void yyerror(PBase &ast, const char *s) {
   cerr << "error: " << s << endl;
 }

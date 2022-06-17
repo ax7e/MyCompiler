@@ -8,25 +8,37 @@
 #include <vector>
 #include <cassert>
 #include <map>
+#include <optional>
+#include <vector>
+#include "SymbolTable.hpp"
 
 using fmt::format;
 using fmt::formatter;
 using std::endl;
 using std::map;
+using std::optional;
 using std::string;
 using std::unique_ptr;
+using std::vector;
+class BaseAST;
+typedef unique_ptr<BaseAST> PBase;
 
 enum class BaseTypes
 {
   Integer,
   FloatNumber
 };
+enum class DeclTypes
+{
+  Const,
+  Variable
+};
 enum class ExpTypes
 {
   Unary,
   Binary,
   Const,
-  Variable
+  LVal
 };
 
 class SlotAllocator
@@ -117,11 +129,12 @@ class StmtAST;
 class BlockAST : public BaseAST
 {
 public:
-  unique_ptr<BaseAST> _stmt;
+  vector<PBase> _list;
   string dump() const override
   {
     GetSlotAllocator().clear();
-    return format("%entry:\n{}", *_stmt);
+    return ("");
+    // return format("%entry:\n{}", *_stmt);
   }
 };
 
@@ -137,6 +150,7 @@ public:
   string _op;
   mutable int _id = -1;
   unique_ptr<BaseAST> _l, _r;
+  optional<string> _ident;
   string dump() const override
   {
     if (_type == ExpTypes::Const)
@@ -164,6 +178,7 @@ public:
     else if (_type == ExpTypes::Binary)
     {
       assert(typeid(*_l) == typeid(ExprAST));
+      assert(typeid(*_r) == typeid(ExprAST));
       ExprAST &l = dynamic_cast<ExprAST &>(*_l);
       ExprAST &r = dynamic_cast<ExprAST &>(*_r);
       calc_l = l.dump_inst();
@@ -189,6 +204,104 @@ public:
       }
     }
     return format("{}{}{}", calc_l, calc_r, calc);
+  }
+  int eval() const
+  {
+    if (_type == ExpTypes::LVal)
+    {
+      auto res = GetSymbolStack().query(_ident);
+      assert(res.has_value());
+      return res.value();
+    }
+    if (_type == ExpTypes::Binary)
+    {
+      int result;
+      ExprAST &l = dynamic_cast<ExprAST &>(*_l);
+      ExprAST &r = dynamic_cast<ExprAST &>(*_r);
+      int wl = l.eval();
+      int wr = r.eval();
+      if (_op == "+")
+      {
+        result = wl + wr;
+      }
+      else if (_op == "-")
+      {
+        result = wl - wr;
+      }
+      else if (_op == "*")
+      {
+        result = wl * wr;
+      }
+      else if (_op == "/")
+      {
+        result = wl / wr;
+      }
+
+      else if (_op == "%")
+      {
+        result = wl % wr;
+      }
+
+      else if (_op == ">")
+      {
+        result = wl > wr;
+      }
+
+      else if (_op == "<")
+      {
+        result = wl < wr;
+      }
+
+      else if (_op == ">=")
+      {
+        result = wl >= wr;
+      }
+
+      else if (_op == "<=")
+      {
+        result = wl <= wr;
+      }
+      else if (_op == "==")
+      {
+        result = wl == wr;
+      }
+      else if (_op == "!=")
+      {
+        result = wl != wr;
+      }
+      else if (_op == "&&")
+      {
+        result = wl && wr;
+      }
+      else if (_op == "||")
+      {
+        result = wl || wr;
+      }
+      else
+      {
+        throw logic_error(format("unknown op {}", _op));
+      }
+      return result;
+    }
+    else if (_type == ExpTypes::Unary)
+    {
+      int result = l.eval();
+      ExprAST &l = dynamic_cast<ExprAST &>(*_l);
+      if (_op == "-")
+      {
+        result = -result;
+      }
+      else if (_op == "!")
+      {
+        result = !result;
+      }
+      return result;
+    }
+    else if (_type == ExpTypes::Const)
+    {
+      NumberAST &l = dynamic_cast<NumberAST &>(*l);
+      return l->value;
+    }
   }
 };
 
@@ -221,3 +334,27 @@ public:
 };
 
 BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r);
+BaseTypes parse_type(const string &t);
+
+class DeclAST : public BaseAST
+{
+public:
+  DeclTypes _type;
+  BaseTypes _bType;
+  unique_ptr<vector<PBase>> _vars;
+  DeclAST(DeclTypes type, BaseTypes bType, unique_ptr<vector<PBase>> vars)
+      : _type(type), _bType(bType), _vars(move(vars))
+  {
+  }
+  string dump() const override { return ""; }
+};
+
+class DefAST : public BaseAST
+{
+public:
+  string _ident;
+  optional<PBase> _init;
+  DefAST(const string &i) : _ident(i) {}
+  DefAST(const string &i, PBase p) : _ident(i), _init(move(p)) {}
+  string dump() const override { return ""; }
+};
