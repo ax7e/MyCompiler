@@ -29,9 +29,20 @@ typedef variant<monostate, int> Symbol;
 class SymbolTable
 {
   map<string, Symbol> _table;
+  int _tableId;
+  static int _tableClock;
 
 public:
-  void insert(const string &id, Symbol w) { _table[id] = w; }
+  SymbolTable() { _tableId = ++_tableClock; }
+  void insert(const string &id, Symbol w)
+  {
+    _table[id] = w;
+  }
+  string rename(string id) const
+  {
+    id += "_" + std::to_string(_tableId);
+    return id;
+  }
   optional<Symbol> query(string id)
   {
     if (_table.count(id))
@@ -62,6 +73,17 @@ public:
       auto res = i->query(id);
       if (res)
         return res;
+    }
+    return std::nullopt;
+  }
+
+  optional<string> rename(string id)
+  {
+    for (auto i = _stack.rbegin(); i != _stack.rend(); ++i)
+    {
+      auto res = i->query(id);
+      if (res)
+        return i->rename(id);
     }
     return std::nullopt;
   }

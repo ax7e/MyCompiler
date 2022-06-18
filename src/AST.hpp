@@ -123,12 +123,13 @@ public:
   unique_ptr<BaseAST> _block;
   string dump() const override
   {
-    string res = format("fun @{}(): {} {{\n{}}}", _ident, *_funcType, *_block);
+    GetSlotAllocator().clear();
+    string res = format("fun @{}(): {} {{\n%entry:\n{}}}", _ident, *_funcType, *_block);
     return res;
   }
 };
 
-class StmtAST;
+class RetStmtAST;
 
 class BlockAST : public BaseAST
 {
@@ -138,9 +139,7 @@ public:
   {
 
     GetTableStack().push();
-    GetSlotAllocator().clear();
     string res;
-    res += "%entry:\n";
     for (const auto &p : _list)
     {
       res += p->dump();
@@ -180,7 +179,7 @@ public:
     else if (_type == ExpTypes::LVal)
     {
       assert(_ident.has_value());
-      auto r = GetTableStack().back().query(*_ident);
+      auto r = GetTableStack().query(*_ident);
       assert(r.has_value());
       if (r->index() == 0)
       {
@@ -244,12 +243,12 @@ public:
     else if (_type == ExpTypes::LVal)
     {
       assert(_ident.has_value());
-      auto r = GetTableStack().back().query(*_ident);
+      auto r = GetTableStack().query(*_ident);
       assert(r.has_value());
       if (r->index() == 0)
       {
         _id = GetSlotAllocator().getSlot();
-        calc += format("\t%{} = load %{}\n", _id, _ident.value());
+        calc += format("\t%{} = load %{}\n", _id, *GetTableStack().rename(_ident.value()));
       }
     }
     return format("{}{}{}", calc_l, calc_r, calc);
@@ -361,17 +360,28 @@ public:
   }
 };
 
-class StmtAST : public BaseAST
+class RetStmtAST : public BaseAST
 {
 public:
   unique_ptr<BaseAST> _expr;
   const ExprAST &expr() const { return dynamic_cast<const ExprAST &>(*_expr); }
   string dump() const override
   {
+    if (!_expr)
+      return "\tret\n";
     assert(typeid(*_expr) == typeid(ExprAST));
     auto inst = expr().dump_inst();
     auto id = expr().dump();
     return format("{}\tret {}\n", inst, id);
+  }
+};
+
+class NullStmtAST : public BaseAST
+{
+public:
+  string dump() const override
+  {
+    return "";
   }
 };
 
@@ -426,14 +436,15 @@ public:
     }
     else
     {
-      calc += format("\t%{} = alloc i32\n", _ident);
+      GetTableStack().back().insert(_ident, Symbol());
+      auto r = *GetTableStack().rename(_ident);
+      calc += format("\t%{} = alloc i32\n", r);
       if (_init.has_value())
       {
         auto &p = dynamic_cast<ExprAST &>(*_init.value());
         calc += p.dump_inst();
-        calc += format("\tstore {}, %{}\n", p.dump(), _ident);
+        calc += format("\tstore {}, %{}\n", p.dump(), r);
       }
-      GetTableStack().back().insert(_ident, Symbol());
     }
     return calc;
   }
@@ -449,7 +460,7 @@ public:
     auto &r = dynamic_cast<ExprAST &>(*_r);
     string code;
     code += r.dump_inst();
-    code += format("\tstore {}, %{}\n", r.dump(), *_id);
+    code += format("\tstore {}, %{}\n", r.dump(), *GetTableStack().rename(*_id));
     return code;
   }
 };

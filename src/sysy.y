@@ -95,8 +95,12 @@ Block
 
 Stmt
   : RETURN Exp ';' {
-    auto ast = new StmtAST(); 
+    auto ast = new RetStmtAST(); 
     ast->_expr = PBase($2);
+    $$ = ast;
+  }
+  | RETURN ';' {
+    auto ast = new RetStmtAST(); 
     $$ = ast;
   }
   | LVal '=' Exp ';' {
@@ -104,6 +108,19 @@ Stmt
     ast->_id = unique_ptr<string>($1);
     ast->_r = PBase($3);
     $$ = ast;
+  }
+  | Block {
+    $$ = $1;
+  }
+  | ';' {
+    auto ast = new NullStmtAST();  
+    $$ = ast;
+  }
+  | Exp ';' {
+    auto ast = new NullStmtAST();  
+    free($1);
+    $$ = ast;
+
   }
   ;
 
