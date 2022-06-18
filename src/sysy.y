@@ -99,6 +99,12 @@ Stmt
     ast->_expr = PBase($2);
     $$ = ast;
   }
+  | LVal '=' Exp ';' {
+    auto ast = new AssignAST();
+    ast->_id = unique_ptr<string>($1);
+    ast->_r = PBase($3);
+    $$ = ast;
+  }
   ;
 
 Exp 
@@ -248,6 +254,7 @@ BType
 ConstDef
   : IDENT '=' ConstInitVal {
     auto ast = new DefAST(
+      DeclTypes::Const,
       *unique_ptr<string>($1), // ident
       PBase($3)); // init
     $$ = ast;
@@ -279,11 +286,11 @@ VarDecl
 
 VarDef
   : IDENT {
-    auto ast = new DefAST(*unique_ptr<string>($1));
+    auto ast = new DefAST(DeclTypes::Variable, *unique_ptr<string>($1));
     $$ = ast;
   }
   | IDENT '=' InitVal {
-    auto ast = new DefAST(*unique_ptr<string>($1), PBase($3));
+    auto ast = new DefAST(DeclTypes::Variable, *unique_ptr<string>($1), PBase($3));
     $$ = ast;
   }
 
