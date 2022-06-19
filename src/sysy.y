@@ -38,51 +38,83 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN  AND_CONST OR_CONST CONST IF ELSE
+%token INT RETURN  AND_CONST OR_CONST CONST IF ELSE WHILE BREAK CONTINUE VOID
 %token <str_val> IDENT REL_OP EQ_OP
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <str_val> UnaryOp BType LVal
-%type <ast_val> FuncDef FuncType Block Stmt Number  
+%type <str_val> UnaryOp LVal
+%type <ast_val> FuncDef Block Stmt Number  
 %type <ast_val> Decl ConstDecl ConstDef ConstInitVal ConstExp
 %type <ast_val> MulExp AddExp RelExp EqExp LAndExp LOrExp Exp PrimaryExp UnaryExp
-%type <vec_val> BlockItemList ConstDefList VarDefList
-%type <ast_val> VarDecl VarDef InitVal BlockItem
-%type <ast_val> OpenStmt ClosedStmt SimpleStmt
+%type <vec_val> BlockItemList ConstDefList VarDefList CompUnitList FuncFParamList FuncRParamList 
+%type <ast_val> VarDecl VarDef InitVal BlockItem FuncFParam
+%type <ast_val> OpenStmt ClosedStmt SimpleStmt 
 
 
 %%
 
-// 开始符, CompUnit ::= FuncDef, 大括号后声明了解析完成后 parser 要做的事情
-// 之前我们定义了 FuncDef 会返回一个 str_val, 也就是字符串指针
-// 而 parser 一旦解析完 CompUnit, 就说明所有的 token 都被解析了, 即解析结束了
-// 此时我们应该把 FuncDef 返回的结果收集起来, 作为 AST 传给调用 parser 的函数
-// $1 指代规则里第一个符号的返回值, 也就是 FuncDef 的返回值
-CompUnit
+CompUnit 
+  : CompUnitList {
+    auto t = new CompUnitAST();
+    t->_list = move(*unique_ptr<vector<PBase>>($1));
+    ast = PBase(t);
+  }
+  ;
+
+CompUnitList
   : FuncDef {
-    auto compUnit = new CompUnitAST(); 
-    compUnit->_funcDef = PBase($1); 
-    ast = PBase(compUnit); 
+    auto v = new vector<PBase>();
+    v->push_back(PBase($1));
+    $$ = v;
+  }
+  | CompUnitList FuncDef {
+    auto v = $1;
+    v->push_back(PBase($2));
+    $$ = v;
   }
   ;
 
 // Function definition
 FuncDef
-  : FuncType IDENT '(' ')' Block {
-    auto ast = new FuncDefAST(); 
-    ast->_funcType = PBase($1); 
-    ast->_ident = *unique_ptr<string>($2); 
-    ast->_block = PBase($5);
-    $$ = ast;
+  : INT IDENT '(' FuncFParamList ')' Block {
+    $$ = new FuncDefAST(BaseTypes::Integer, $2, $4, $6); 
+  }
+  | VOID IDENT '(' FuncFParamList ')' Block {
+    $$ = new FuncDefAST(BaseTypes::Void, $2, $4, $6); 
+  }
+  | INT IDENT '('')' Block  {
+    $$ = new FuncDefAST(BaseTypes::Integer, $2, nullptr, $5); 
+  }
+  | VOID IDENT '(' ')' Block {
+    $$ = new FuncDefAST(BaseTypes::Void, $2, nullptr, $5); 
   }
   ;
 
-FuncType
-  : INT {
-    auto ast = new FuncTypeAST();
-    ast->_type = BaseTypes::Integer; 
-    $$ = ast;
+FuncFParamList 
+  : FuncFParamList ',' FuncFParam {
+    $$ = $1;
+    $$->push_back(PBase($3));
+  }
+  | FuncFParam {
+    auto v = new vector<PBase>();
+    v->push_back(PBase($1));
+    $$ = v;
+  }
+  ;
+
+FuncFParam
+  : INT IDENT {
+    auto t = new FuncFParamAST();
+    t->_ident = *unique_ptr<string>($2);
+    t->_type = BaseTypes::Integer;
+    $$ = t;
+  }
+  | VOID IDENT {
+    auto t = new FuncFParamAST();
+    t->_ident = *unique_ptr<string>($2);
+    t->_type = BaseTypes::Void;
+    $$ = t;
   }
   ;
 
@@ -127,10 +159,16 @@ SimpleStmt
     $$ = ast;
   }
   | Exp ';' {
-    auto ast = new NullStmtAST();  
-    free($1);
+    auto ast = new ExpStmtAST();  
+    ast->_exp = PBase($1);
     $$ = ast;
 
+  }
+  | BREAK {
+    $$ = new BreakStmt();
+  }
+  | CONTINUE {
+    $$ = new ContinueStmt();
   }
   ;
 
@@ -232,6 +270,7 @@ PrimaryExp
     ast->_ident = *unique_ptr<string>($1);
     $$ = ast; 
   }
+  ;
 
 UnaryExp
   : PrimaryExp {
@@ -243,6 +282,31 @@ UnaryExp
     ast->_type = ExpTypes::Unary;
     ast->_l = PBase($2); 
     $$ = ast; 
+  }
+  | IDENT '(' ')' {
+    auto ast = new ExprAST(); 
+    ast->_type = ExpTypes::FuncCall;
+    ast->_ident = *unique_ptr<string>($1);
+    $$ = ast;
+  }
+  | IDENT '(' FuncRParamList ')' {
+    auto ast = new ExprAST(); 
+    ast->_type = ExpTypes::FuncCall;
+    ast->_ident = *unique_ptr<string>($1);
+    ast->_params = move(*unique_ptr<vector<PBase>>($3));
+    $$ = ast;
+  }
+  ;
+
+FuncRParamList :
+  Exp {
+    auto v = new vector<PBase>();
+    v->push_back(PBase($1));
+    $$ = v;
+  }
+  | FuncRParamList ',' Exp {
+    $$ = $1;
+    $$->push_back(PBase($3));
   }
 
 Number
@@ -263,20 +327,14 @@ Decl
   ;
 
 ConstDecl
-  : CONST BType ConstDefList ';' {
+  : CONST INT ConstDefList ';' {
     auto ast = new DeclAST(
       DeclTypes::Const, 
-      parse_type(*unique_ptr<string>($2)), 
+      BaseTypes::Integer, 
       unique_ptr<vector<PBase>>($3));
     $$ = ast;
   }
-
-BType
-  : INT {
-    string *b_type = new string("int");
-    $$ = b_type;
-  }
-
+  ;
 
 ConstDef
   : IDENT '=' ConstInitVal {
@@ -286,30 +344,35 @@ ConstDef
       PBase($3)); // init
     $$ = ast;
   }
+  ;
 
 ConstInitVal
   : ConstExp {
     $$ = $1;
   }
+  ;
 
 LVal 
   : IDENT {
     $$ = $1;
   }
+  ;
 
 ConstExp 
   : Exp {
     $$ = $1;
   }
+  ;
 
 VarDecl
-  : BType VarDefList ';' {
+  : INT VarDefList ';' {
     auto ast = new DeclAST(
       DeclTypes::Variable, 
-      parse_type(*unique_ptr<string>($1)), 
+      BaseTypes::Integer, 
       unique_ptr<vector<PBase>>($2));
     $$ = ast;
   }
+  ;
 
 VarDef
   : IDENT {
@@ -320,11 +383,13 @@ VarDef
     auto ast = new DefAST(DeclTypes::Variable, *unique_ptr<string>($1), PBase($3));
     $$ = ast;
   }
+  ;
 
 InitVal 
   : Exp {
     $$ = $1;
   }
+  ;
 
 ConstDefList
   : ConstDef {
@@ -350,6 +415,7 @@ VarDefList
     v->push_back(PBase($3));
     $$ = v;
   }
+  ;
 
 BlockItem 
   : Decl {
@@ -358,7 +424,8 @@ BlockItem
   | Stmt {
     $$ = $1;
   }
-
+  ;
+  
 BlockItemList
   : {
     vector<PBase> *v = new vector<PBase>(); 
@@ -369,6 +436,7 @@ BlockItemList
     v->push_back(PBase($2));
     $$ = v;
   }
+  ;
 
 ClosedStmt 
   : SimpleStmt {
@@ -378,6 +446,10 @@ ClosedStmt
     auto ast = new IFStmtAST($3,$5,$7); 
     $$ = ast;
   }
+  | WHILE '(' Exp ')' ClosedStmt {
+    $$ = new WhileStmtAST($3, $5);
+  }
+  ;
 
 OpenStmt 
   : IF '(' Exp ')' Stmt {
@@ -389,8 +461,11 @@ OpenStmt
     auto ast = new IFStmtAST($3,$5,$7);
     assert(typeid(*ast->_if) == typeid(BlockAST));
     $$ = ast;
-
   }
+  | WHILE '(' Exp ')' OpenStmt {
+    $$ = new WhileStmtAST($3, $5);
+  }
+  ;
 %%
 
 // 定义错误处理函数, 其中第二个参数是错误信息
@@ -398,3 +473,4 @@ OpenStmt
 void yyerror(PBase &ast, const char *s) {
   cerr << "error: " << s << endl;
 }
+

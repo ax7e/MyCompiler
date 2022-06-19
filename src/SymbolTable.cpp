@@ -11,3 +11,9 @@ int GenID()
   static int clk = 0;
   return ++clk;
 }
+
+HelperTable &GetHelperTable()
+{
+  static HelperTable t;
+  return t;
+}

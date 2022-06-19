@@ -23,7 +23,10 @@ BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r)
 
 BaseTypes parse_type(const string &t)
 {
-  return BaseTypes::Integer;
+  if (t == "int")
+    return BaseTypes::Integer;
+  else
+    return BaseTypes::Void;
 }
 
 const map<string, string> ExprAST::table_binary = {
@@ -68,4 +71,50 @@ BaseAST *WrapBlock(BaseAST *ast)
   auto blk = new BlockAST();
   blk->_list.push_back(PBase(ast));
   return blk;
+}
+
+string FuncDefAST::dump() const
+{
+  assert(typeid(*_block) == typeid(BlockAST));
+  GetSlotAllocator().clear();
+  string res = format("fun @{}(", _ident);
+  GetTableStack().push();
+  for (auto &p : _params)
+  {
+    GetTableStack().insert(dynamic_cast<FuncFParamAST &>(*p)._ident, Symbol());
+  }
+  GetTableStack().banPush();
+  res += DumpList(_params);
+  res += format(")");
+  if (_type != BaseTypes::Void)
+    res += format(": {} ", _type);
+  res += format("{{\n%entry:\n");
+  string blk = format("{}", *_block);
+  if (blk == "")
+    res += "\tret\n";
+  else
+    res += blk;
+  res += format("}}\n");
+  GetTableStack().insert(_ident, _type == BaseTypes::Integer);
+  return res;
+}
+
+BlockAST &FuncDefAST::block() const
+{
+  return dynamic_cast<BlockAST &>(*_block);
+}
+
+string DumpList(const vector<PBase> &params)
+{
+  string res;
+  bool head = true;
+  for (const auto &p : params)
+  {
+    if (head)
+      head = false;
+    else
+      res += ",";
+    res += p->dump();
+  }
+  return res;
 }

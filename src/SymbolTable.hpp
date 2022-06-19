@@ -28,6 +28,27 @@ typedef variant<monostate, int> Symbol;
 
 int GenID();
 
+class HelperTable
+{
+  map<string, vector<int>> _table;
+
+public:
+  void insert(const string &id, int w)
+  {
+    _table[id].push_back(w);
+  }
+  int query(const string &id)
+  {
+    return _table[id].back();
+  }
+  void unregister(const string &id)
+  {
+    _table[id].pop_back();
+  }
+};
+
+HelperTable &GetHelperTable();
+
 class SymbolTable
 {
   map<string, Symbol> _table;
@@ -60,11 +81,16 @@ public:
 class TableStack
 {
   vector<SymbolTable> _stack;
+  bool _ban;
 
 public:
+  void banPush() { _ban = true; }
   void push()
   {
-    _stack.push_back(SymbolTable());
+    if (_ban)
+      _ban = false;
+    else
+      _stack.push_back(SymbolTable());
   }
 
   optional<Symbol> query(string id)
@@ -76,6 +102,16 @@ public:
         return res;
     }
     return std::nullopt;
+  }
+
+  void insert(string id, Symbol w)
+  {
+    fmt::print("insert {}\n", id);
+    if (w.index() == 0)
+      fmt::print(",null", id);
+    else
+      fmt::print(",{}", std::get<int>(w));
+    _stack.back().insert(id, w);
   }
 
   optional<string> rename(string id)

@@ -30,7 +30,8 @@ typedef unique_ptr<BaseAST> PBase;
 enum class BaseTypes
 {
   Integer,
-  FloatNumber
+  FloatNumber,
+  Void
 };
 enum class DeclTypes
 {
@@ -42,7 +43,8 @@ enum class ExpTypes
   Unary,
   Binary,
   Const,
-  LVal
+  LVal,
+  FuncCall
 };
 
 class SlotAllocator
@@ -62,6 +64,7 @@ public:
 
 SlotAllocator &GetSlotAllocator();
 BaseAST *WrapBlock(BaseAST *ast);
+string DumpList(const vector<PBase> &params);
 
 class BaseAST
 {
@@ -86,6 +89,7 @@ namespace fmt
     template <typename FormatCtx>
     auto format(const AST &a, FormatCtx &ctx)
     {
+      // fmt::print("\033[0;32mPREVIEW\033[0m:{}\n", a.dump());
       return formatter<std::string>::format(a.dump(), ctx);
     }
   };
@@ -102,6 +106,9 @@ namespace fmt
       case BaseTypes::Integer:
         name = "i32";
         break;
+      case BaseTypes::Void:
+        name = "void";
+        break;
       default:
         throw format_error("invalid type");
       }
@@ -113,28 +120,42 @@ namespace fmt
 class CompUnitAST : public BaseAST
 {
 public:
-  unique_ptr<BaseAST> _funcDef;
-  string dump() const override { return format("{}", *_funcDef); }
+  vector<unique_ptr<BaseAST>> _list;
+  CompUnitAST() {}
+  string dump() const override
+  {
+    GetTableStack().push();
+    string res;
+    for (auto &p : _list)
+    {
+      res += p->dump();
+    }
+    GetTableStack().pop();
+    return res;
+  }
 };
 
+class BlockAST;
 class FuncDefAST : public BaseAST
 {
 public:
-  unique_ptr<BaseAST> _funcType;
+  BaseTypes _type;
   std::string _ident;
-  unique_ptr<BaseAST> _block;
-  string dump() const override
-  {
-    GetSlotAllocator().clear();
-    string res = format("fun @{}(): {} {{\n%entry:\n{}}}", _ident, *_funcType, *_block);
-    return res;
-  }
+  PBase _block;
+  vector<PBase> _params;
+  FuncDefAST(BaseTypes type, string *ident, vector<PBase> *params, BaseAST *blk) : _type(type),
+                                                                                   _ident(*unique_ptr<string>(ident)),
+                                                                                   _block(blk),
+                                                                                   _params(params ? move(*unique_ptr<vector<PBase>>(params)) : vector<PBase>()) {}
+  BlockAST &block() const;
+  string dump() const override;
 };
 
 class RetStmtAST;
 
 class BlockAST : public BaseAST
 {
+
 public:
   vector<PBase> _list;
   string dump() const override;
@@ -157,6 +178,7 @@ class ExprAST : public BaseAST
 
 public:
   ExpTypes _type;
+  vector<PBase> _params;
   string _op;
   mutable int _id = -1;
   unique_ptr<BaseAST> _l, _r;
@@ -181,6 +203,15 @@ public:
       {
         calc = format("{}", std::get<int>(*r));
       };
+    }
+    else if (_type == ExpTypes::FuncCall)
+    {
+      auto type = get<int>(*GetTableStack().query(*_ident));
+      if (type == 1)
+      {
+        assert(_id != -1);
+        calc = format("%{}", _id);
+      }
     }
     else
     {
@@ -242,6 +273,26 @@ public:
         _id = GetSlotAllocator().getSlot();
         calc += format("\t%{} = load %{}\n", _id, *GetTableStack().rename(_ident.value()));
       }
+    }
+    else if (_type == ExpTypes::FuncCall)
+    {
+      auto tids = vector<int>(_params.size());
+      string res;
+      for (auto &p : _params)
+      {
+        auto &pp = dynamic_cast<ExprAST &>(*p);
+        res += pp.dump_inst();
+      }
+      auto type = get<int>(*GetTableStack().query(*_ident));
+      if (type == 1)
+      {
+        _id = GetSlotAllocator().getSlot();
+        res += format("\t%{} = ", _id);
+      }
+      res += format("\tcall @{}(", *_ident);
+      res += DumpList(_params);
+      res += ")\n";
+      return res;
     }
     return format("{}{}{}", calc_l, calc_r, calc);
   }
@@ -377,7 +428,17 @@ public:
   }
 };
 
-class FuncTypeAST : public BaseAST
+class ExpStmtAST : public BaseAST
+{
+public:
+  PBase _exp;
+  string dump() const override
+  {
+    return dynamic_cast<ExprAST &>(*_exp).dump_inst();
+  }
+};
+
+class TypeAST : public BaseAST
 {
 public:
   BaseTypes _type;
@@ -424,11 +485,11 @@ public:
     {
       assert(_init.has_value());
       auto &init = dynamic_cast<ExprAST &>(**_init);
-      GetTableStack().back().insert(_ident, init.eval());
+      GetTableStack().insert(_ident, init.eval());
     }
     else
     {
-      GetTableStack().back().insert(_ident, Symbol());
+      GetTableStack().insert(_ident, Symbol());
       auto r = *GetTableStack().rename(_ident);
       calc += format("\t%{} = alloc i32\n", r);
       if (_init.has_value())
@@ -459,6 +520,7 @@ public:
 
 class IFStmtAST : public BaseAST
 {
+
 public:
   PBase _expr, _if, _else;
   IFStmtAST(BaseAST *expr, BaseAST *if_st, BaseAST *else_st) : _expr(expr), _if(WrapBlock(if_st)), _else(WrapBlock(else_st))
@@ -474,6 +536,7 @@ public:
       assert(typeid(*_if) == typeid(BlockAST));
     if (_else)
       assert(typeid(*_else) == typeid(BlockAST));
+
     string res;
     res += expr().dump_inst();
     res += format("\tbr {}, %then_{}, %else_{}\n", expr().dump(), labelIf, labelElse);
@@ -485,5 +548,71 @@ public:
       res += format("\tjump %end_{}\n", labelEnd);
     res += format("%end_{}:\n", labelEnd);
     return res;
+  }
+};
+
+class WhileStmtAST : public BaseAST
+{
+public:
+  PBase _expr, _body;
+  WhileStmtAST(BaseAST *expr, BaseAST *body) : _expr(expr), _body(WrapBlock(body)) {}
+  const ExprAST &expr() const { return dynamic_cast<const ExprAST &>(*_expr); }
+  string dump() const override
+  {
+    int labelBody = GenID(),
+        labelEnd = GenID(),
+        labelEntry = GenID();
+    assert(typeid(*_body) == typeid(BlockAST));
+    GetHelperTable().insert("while_entry", labelEntry);
+    GetHelperTable().insert("while_body", labelBody);
+    GetHelperTable().insert("while_end", labelEnd);
+    string res;
+    res += format("\tjump %while_entry_{}\n", labelEntry);
+    res += format("%while_entry_{}:\n", labelEntry);
+    res += expr().dump_inst();
+    res += format("\tbr {}, %while_body_{}, %while_end_{}\n", expr().dump(), labelBody, labelEnd);
+    res += format("%while_body_{}:\n{}", labelBody, _body->dump());
+    if (!(_body && dynamic_cast<BlockAST &>(*_body).hasRetStmt()))
+    {
+      res += format("\tjump %while_entry_{}\n", labelEntry);
+    }
+    res += format("%while_end_{}:\n", labelEnd);
+    GetHelperTable().unregister("while_entry");
+    GetHelperTable().unregister("while_body");
+    GetHelperTable().unregister("while_end");
+    return res;
+  }
+};
+
+class BreakStmt : public BaseAST
+{
+  string dump() const override
+  {
+    string inst;
+    inst += format("\tjump %while_end_{}\n", GetHelperTable().query("while_end"));
+    inst += format("%while_body_{}:\n", GenID());
+    return inst;
+  }
+};
+
+class ContinueStmt : public BaseAST
+{
+  string dump() const override
+  {
+    string inst;
+    inst += format("\tjump %while_entry_{}", GetHelperTable().query("while_entry"));
+    inst += format("%while_body_{}:\n", GenID());
+    return inst;
+  }
+};
+
+class FuncFParamAST : public BaseAST
+{
+public:
+  BaseTypes _type;
+  string _ident;
+  string dump() const override
+  {
+    return format("@{}:{}", *GetTableStack().rename(_ident), _type);
   }
 };
