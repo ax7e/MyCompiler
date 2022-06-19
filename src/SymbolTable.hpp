@@ -26,14 +26,15 @@ class BaseAST;
 typedef unique_ptr<BaseAST> PBase;
 typedef variant<monostate, int> Symbol;
 
+int GenID();
+
 class SymbolTable
 {
   map<string, Symbol> _table;
   int _tableId;
-  static int _tableClock;
 
 public:
-  SymbolTable() { _tableId = ++_tableClock; }
+  SymbolTable() { _tableId = GenID(); }
   void insert(const string &id, Symbol w)
   {
     _table[id] = w;

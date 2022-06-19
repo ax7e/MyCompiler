@@ -30,3 +30,42 @@ const map<string, string> ExprAST::table_binary = {
     {"+", "add"}, {"-", "sub"}, {"*", "mul"}, {"/", "div"}, {"%", "mod"}, {">", "gt"}, {"<", "lt"}, {"<=", "le"}, {">=", "ge"}, {"==", "eq"}, {"!=", "ne"}};
 const map<string, string> ExprAST::table_unary = {
     {"+", "add"}, {"-", "sub"}, {"!", "eq"}};
+
+string BlockAST::dump() const
+{
+
+  GetTableStack().push();
+  string res;
+  for (const auto &p : _list)
+  {
+    res += p->dump();
+    // Ignore all the statements after return
+    if (typeid(*p) == typeid(RetStmtAST))
+    {
+      break;
+    }
+  }
+  GetTableStack().pop();
+  return res;
+}
+
+bool BlockAST::hasRetStmt() const
+{
+  for (const auto &p : _list)
+    if (typeid(*p) == typeid(RetStmtAST))
+    {
+      return true;
+    }
+  return false;
+}
+
+BaseAST *WrapBlock(BaseAST *ast)
+{
+  if (!ast)
+    return ast;
+  if (typeid(*ast) == typeid(BlockAST))
+    return ast;
+  auto blk = new BlockAST();
+  blk->_list.push_back(PBase(ast));
+  return blk;
+}

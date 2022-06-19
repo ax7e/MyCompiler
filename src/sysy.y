@@ -38,7 +38,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN  AND_CONST OR_CONST CONST
+%token INT RETURN  AND_CONST OR_CONST CONST IF ELSE
 %token <str_val> IDENT REL_OP EQ_OP
 %token <int_val> INT_CONST
 
@@ -49,6 +49,7 @@ using namespace std;
 %type <ast_val> MulExp AddExp RelExp EqExp LAndExp LOrExp Exp PrimaryExp UnaryExp
 %type <vec_val> BlockItemList ConstDefList VarDefList
 %type <ast_val> VarDecl VarDef InitVal BlockItem
+%type <ast_val> OpenStmt ClosedStmt SimpleStmt
 
 
 %%
@@ -93,7 +94,16 @@ Block
   }
   ;
 
-Stmt
+Stmt 
+  : OpenStmt {
+    $$ = $1;
+  }
+  | ClosedStmt {
+    $$ = $1;
+  }
+  ;
+
+SimpleStmt
   : RETURN Exp ';' {
     auto ast = new RetStmtAST(); 
     ast->_expr = PBase($2);
@@ -360,6 +370,27 @@ BlockItemList
     $$ = v;
   }
 
+ClosedStmt 
+  : SimpleStmt {
+      $$ = $1;
+  }
+  | IF '(' Exp ')' ClosedStmt ELSE ClosedStmt {
+    auto ast = new IFStmtAST($3,$5,$7); 
+    $$ = ast;
+  }
+
+OpenStmt 
+  : IF '(' Exp ')' Stmt {
+    auto ast = new IFStmtAST($3,$5,nullptr); 
+    assert(typeid(*ast->_if) == typeid(BlockAST));
+    $$ = ast;
+  } 
+  | IF '(' Exp ')' ClosedStmt ELSE OpenStmt {
+    auto ast = new IFStmtAST($3,$5,$7);
+    assert(typeid(*ast->_if) == typeid(BlockAST));
+    $$ = ast;
+
+  }
 %%
 
 // 定义错误处理函数, 其中第二个参数是错误信息

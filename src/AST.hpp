@@ -21,6 +21,7 @@ using std::logic_error;
 using std::map;
 using std::optional;
 using std::string;
+using std::to_string;
 using std::unique_ptr;
 using std::vector;
 class BaseAST;
@@ -60,6 +61,7 @@ public:
 };
 
 SlotAllocator &GetSlotAllocator();
+BaseAST *WrapBlock(BaseAST *ast);
 
 class BaseAST
 {
@@ -135,18 +137,8 @@ class BlockAST : public BaseAST
 {
 public:
   vector<PBase> _list;
-  string dump() const override
-  {
-
-    GetTableStack().push();
-    string res;
-    for (const auto &p : _list)
-    {
-      res += p->dump();
-    }
-    GetTableStack().pop();
-    return res;
-  }
+  string dump() const override;
+  bool hasRetStmt() const;
 };
 
 class NumberAST;
@@ -462,5 +454,36 @@ public:
     code += r.dump_inst();
     code += format("\tstore {}, %{}\n", r.dump(), *GetTableStack().rename(*_id));
     return code;
+  }
+};
+
+class IFStmtAST : public BaseAST
+{
+public:
+  PBase _expr, _if, _else;
+  IFStmtAST(BaseAST *expr, BaseAST *if_st, BaseAST *else_st) : _expr(expr), _if(WrapBlock(if_st)), _else(WrapBlock(else_st))
+  {
+  }
+  const ExprAST &expr() const { return dynamic_cast<const ExprAST &>(*_expr); }
+  string dump() const override
+  {
+    int labelIf = GenID(),
+        labelEnd = GenID(),
+        labelElse = GenID();
+    if (_if)
+      assert(typeid(*_if) == typeid(BlockAST));
+    if (_else)
+      assert(typeid(*_else) == typeid(BlockAST));
+    string res;
+    res += expr().dump_inst();
+    res += format("\tbr {}, %then_{}, %else_{}\n", expr().dump(), labelIf, labelElse);
+    res += format("%then_{}:\n{}", labelIf, _if->dump());
+    if (!(_if && dynamic_cast<BlockAST &>(*_if).hasRetStmt()))
+      res += format("\tjump %end_{}\n", labelEnd);
+    res += format("%else_{}:\n{}", labelElse, _else ? _else->dump() : "", labelEnd);
+    if (!(_else && dynamic_cast<BlockAST &>(*_else).hasRetStmt()))
+      res += format("\tjump %end_{}\n", labelEnd);
+    res += format("%end_{}:\n", labelEnd);
+    return res;
   }
 };

@@ -6,4 +6,8 @@ TableStack &GetTableStack()
   return t;
 }
 
-int SymbolTable::_tableClock;
+int GenID()
+{
+  static int clk = 0;
+  return ++clk;
+}
