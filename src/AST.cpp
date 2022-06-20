@@ -11,13 +11,12 @@ SlotAllocator &GetSlotAllocator()
   return alloc;
 }
 
-BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r)
+ExprAST *concat(const string &op, ExprAST *l, ExprAST *r)
 {
-  auto ast = new ExprAST();
-  ast->_l = move(l);
-  ast->_r = move(r);
+  auto ast = new BinaryExprAST();
+  ast->_l = unique_ptr<ExprAST>(l);
+  ast->_r = unique_ptr<ExprAST>(r);
   ast->_op = op;
-  ast->_type = ExpTypes::Binary;
   return ast;
 }
 
@@ -81,7 +80,7 @@ string FuncDefAST::dump() const
   GetTableStack().push();
   for (auto &p : _params)
   {
-    GetTableStack().insert(dynamic_cast<FuncFParamAST &>(*p)._ident, Symbol());
+    GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident, Symbol());
   }
   GetTableStack().banPush();
   res += DumpList(_params);
@@ -91,7 +90,7 @@ string FuncDefAST::dump() const
   res += format("{{\n%entry:\n");
   for (auto &pp : _params)
   {
-    auto &p = dynamic_cast<FuncFParamAST &>(*pp);
+    auto &p = dynamic_cast<FuncDefParamAST &>(*pp);
     auto name = *GetTableStack().rename(p._ident);
     res += format("\t%{} = alloc i32\n", name);
     res += format("\tstore @{},%{}\n", name, name);
@@ -109,19 +108,4 @@ string FuncDefAST::dump() const
 BlockAST &FuncDefAST::block() const
 {
   return dynamic_cast<BlockAST &>(*_block);
-}
-
-string DumpList(const vector<PBase> &params)
-{
-  string res;
-  bool head = true;
-  for (const auto &p : params)
-  {
-    if (head)
-      head = false;
-    else
-      res += ",";
-    res += p->dump();
-  }
-  return res;
 }

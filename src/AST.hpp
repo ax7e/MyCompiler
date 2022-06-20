@@ -62,9 +62,35 @@ public:
   }
 };
 
+template <typename Derived, typename Base>
+unique_ptr<Derived> derived_cast(unique_ptr<Base> p)
+{
+  Derived *tmp = dynamic_cast<Derived *>(p.get());
+  std::unique_ptr<Derived> derivedPointer;
+  if (tmp != nullptr)
+  {
+    p.release();
+    derivedPointer.reset(tmp);
+  }
+  return derivedPointer;
+}
 SlotAllocator &GetSlotAllocator();
 BaseAST *WrapBlock(BaseAST *ast);
-string DumpList(const vector<PBase> &params);
+template <typename T>
+string DumpList(const vector<T> &params)
+{
+  string res;
+  bool head = true;
+  for (const auto &p : params)
+  {
+    if (head)
+      head = false;
+    else
+      res += ",";
+    res += p->dump();
+  }
+  return res;
+}
 
 class BaseAST
 {
@@ -136,17 +162,36 @@ public:
 };
 
 class BlockAST;
+class FuncDefParamAST : public BaseAST
+{
+public:
+  BaseTypes _type;
+  string _ident;
+  string dump() const override
+  {
+    return format("@{}:{}", *GetTableStack().rename(_ident), _type);
+  }
+};
+
 class FuncDefAST : public BaseAST
 {
 public:
   BaseTypes _type;
   std::string _ident;
   PBase _block;
-  vector<PBase> _params;
+  vector<unique_ptr<FuncDefParamAST>> _params;
   FuncDefAST(BaseTypes type, string *ident, vector<PBase> *params, BaseAST *blk) : _type(type),
                                                                                    _ident(*unique_ptr<string>(ident)),
-                                                                                   _block(blk),
-                                                                                   _params(params ? move(*unique_ptr<vector<PBase>>(params)) : vector<PBase>()) {}
+                                                                                   _block(blk)
+  {
+    auto t = unique_ptr<vector<PBase>>(params);
+    if (!t)
+      return;
+    for (auto &p : *t)
+    {
+      _params.push_back(derived_cast<FuncDefParamAST>(move(p)));
+    }
+  }
   BlockAST &block() const;
   string dump() const override;
 };
@@ -173,249 +218,217 @@ public:
 
 class ExprAST : public BaseAST
 {
+protected:
   static const map<string, string> table_binary;
   static const map<string, string> table_unary;
 
 public:
-  ExpTypes _type;
-  vector<PBase> _params;
-  string _op;
   mutable int _id = -1;
-  unique_ptr<BaseAST> _l, _r;
-  optional<string> _ident;
+  virtual string dump() const override
+  {
+    assert(_id != -1);
+    return format("%{}", _id);
+  }
+  virtual string dump_inst() const = 0;
+  virtual int eval() const
+  {
+    throw logic_error("const expr is illegal");
+    return 0;
+  }
+};
+
+struct ConstExprAST : public ExprAST
+{
+  unique_ptr<NumberAST> _num;
+  string dump() const override { return format("{}", *_num); }
+  string dump_inst() const { return ""; }
+  int eval() const override
+  {
+    return _num->value;
+  }
+};
+
+struct LValExprAST : public ExprAST
+{
+  string _ident;
   string dump() const override
   {
-    string calc;
-    if (_type == ExpTypes::Const)
+    auto r = GetTableStack().query(_ident);
+    assert(r.has_value());
+    if (r->_type == SymbolTypes::Const)
     {
-      calc = format("{}", *_l);
-    }
-    else if (_type == ExpTypes::LVal)
-    {
-      assert(_ident.has_value());
-      auto r = GetTableStack().query(*_ident);
-      assert(r.has_value());
-      if (r->_type == SymbolTypes::Const)
-      {
-        calc = format("{}", std::get<int>(r->_data));
-      }
-      else
-      {
-        assert(r->_type == SymbolTypes::Var);
-        calc = format("%{}", _id);
-      }
-    }
-    else if (_type == ExpTypes::FuncCall)
-    {
-      auto type = get<BaseTypes>(GetTableStack().query(*_ident)->_data);
-      if (type == BaseTypes::Integer)
-      {
-        assert(_id != -1);
-        calc = format("%{}", _id);
-      }
+      return format("{}", std::get<int>(r->_data));
     }
     else
     {
+      assert(r->_type == SymbolTypes::Var);
       assert(_id != -1);
-      calc = format("%{}", _id);
+      return format("%{}", _id);
     }
-    return calc;
   }
-  string dump_inst() const
+  string dump_inst() const override
+  {
+    auto r = GetTableStack().query(_ident);
+    assert(r.has_value());
+    if (r->_type == SymbolTypes::Var)
+    {
+      _id = GetSlotAllocator().getSlot();
+      return format("\t%{} = load %{}\n", _id, *GetTableStack().rename(_ident));
+    }
+    return "";
+  }
+  int eval() const override
+  {
+    auto res = GetTableStack().query(_ident);
+    assert(res.has_value());
+    assert(res->_type == SymbolTypes::Const);
+    return get<int>(res->_data);
+  }
+};
+
+struct UnaryExprAST : public ExprAST
+{
+  string _op;
+  unique_ptr<ExprAST> _child;
+  string dump_inst() const override
+  {
+    _id = GetSlotAllocator().getSlot();
+    auto inst = _child->dump_inst();
+    return format("{}\t%{} = {} 0, {}\n", inst, _id, table_unary.at(_op), _child->dump());
+  }
+  int eval() const override
+  {
+    int result = _child->eval();
+    if (_op == "-")
+      result = -result;
+    else if (_op == "!")
+      result = !result;
+    return result;
+  }
+};
+
+struct BinaryExprAST : public ExprAST
+{
+  string _op;
+  unique_ptr<ExprAST> _l, _r;
+  string dump_inst() const override
   {
     string calc_l, calc_r, calc;
-    if (_type == ExpTypes::Unary)
+    calc_l = _l->dump_inst();
+    calc_r = _r->dump_inst();
+    _id = GetSlotAllocator().getSlot();
+    if (_op == "||")
     {
-      assert(typeid(*_l) == typeid(ExprAST));
-      ExprAST &l = dynamic_cast<ExprAST &>(*_l);
-      calc_l = l.dump_inst();
-      _id = GetSlotAllocator().getSlot();
-      calc = format("\t%{} = {} 0, {}\n", _id, table_unary.at(_op), _l->dump());
+      auto tid = GetSlotAllocator().getSlot();
+      calc = format("\t%{} = or {}, {}\n", tid, _l->dump(), _r->dump());
+      calc += format("\t%{} = ne %{}, 0\n", _id, tid);
     }
-    else if (_type == ExpTypes::Const)
+    else if (_op == "&&")
     {
-      calc = "";
-    }
-    else if (_type == ExpTypes::Binary)
-    {
-      assert(typeid(*_l) == typeid(ExprAST));
-      assert(typeid(*_r) == typeid(ExprAST));
-      ExprAST &l = dynamic_cast<ExprAST &>(*_l);
-      ExprAST &r = dynamic_cast<ExprAST &>(*_r);
-      calc_l = l.dump_inst();
-      calc_r = r.dump_inst();
-      _id = GetSlotAllocator().getSlot();
-      if (_op == "||")
-      {
-        auto tid = GetSlotAllocator().getSlot();
-        calc = format("\t%{} = or {}, {}\n", tid, _l->dump(), _r->dump());
-        calc += format("\t%{} = ne %{}, 0\n", _id, tid);
-      }
-      else if (_op == "&&")
-      {
-        auto tid1 = GetSlotAllocator().getSlot();
-        auto tid2 = GetSlotAllocator().getSlot();
-        calc += format("\t%{} = ne {}, 0\n", tid1, _l->dump());
-        calc += format("\t%{} = ne {}, 0\n", tid2, _r->dump());
-        calc += format("\t%{} = and %{}, %{}\n", _id, tid1, tid2);
-      }
-      else
-      {
-        calc = format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
-      }
-    }
-    else if (_type == ExpTypes::LVal)
-    {
-      assert(_ident.has_value());
-      auto r = GetTableStack().query(*_ident);
-      assert(r.has_value());
-      if (r->_type == SymbolTypes::Var)
-      {
-        _id = GetSlotAllocator().getSlot();
-        calc += format("\t%{} = load %{}\n", _id, *GetTableStack().rename(_ident.value()));
-      }
-    }
-    else if (_type == ExpTypes::FuncCall)
-    {
-      auto tids = vector<int>(_params.size());
-      string res;
-      for (auto &p : _params)
-      {
-        auto &pp = dynamic_cast<ExprAST &>(*p);
-        res += pp.dump_inst();
-      }
-      auto type = get<BaseTypes>(GetTableStack().query(*_ident)->_data);
-      if (type == BaseTypes::Integer)
-      {
-        _id = GetSlotAllocator().getSlot();
-        res += format("\t%{} = ", _id);
-      }
-      res += format("\tcall @{}(", *_ident);
-      res += DumpList(_params);
-      res += ")\n";
-      return res;
-    }
-    return format("{}{}{}", calc_l, calc_r, calc);
-  }
-  int eval() const
-  {
-    if (_type == ExpTypes::LVal)
-    {
-      assert(_ident.has_value());
-      auto res = GetTableStack().query(*_ident);
-      assert(res.has_value());
-      return get<int>(res->_data);
-    }
-    else if (_type == ExpTypes::Binary)
-    {
-      int result = 0;
-      ExprAST &l = dynamic_cast<ExprAST &>(*_l);
-      ExprAST &r = dynamic_cast<ExprAST &>(*_r);
-      int wl = l.eval();
-      int wr = r.eval();
-      if (_op == "+")
-      {
-        result = wl + wr;
-      }
-      else if (_op == "-")
-      {
-        result = wl - wr;
-      }
-      else if (_op == "*")
-      {
-        result = wl * wr;
-      }
-      else if (_op == "/")
-      {
-        result = wl / wr;
-      }
-
-      else if (_op == "%")
-      {
-        result = wl % wr;
-      }
-
-      else if (_op == ">")
-      {
-        result = wl > wr;
-      }
-
-      else if (_op == "<")
-      {
-        result = wl < wr;
-      }
-
-      else if (_op == ">=")
-      {
-        result = wl >= wr;
-      }
-
-      else if (_op == "<=")
-      {
-        result = wl <= wr;
-      }
-      else if (_op == "==")
-      {
-        result = wl == wr;
-      }
-      else if (_op == "!=")
-      {
-        result = wl != wr;
-      }
-      else if (_op == "&&")
-      {
-        result = wl && wr;
-      }
-      else if (_op == "||")
-      {
-        result = wl || wr;
-      }
-      else
-      {
-        throw logic_error(format("unknown op {}", _op));
-      }
-      return result;
-    }
-    else if (_type == ExpTypes::Unary)
-    {
-      ExprAST &l = dynamic_cast<ExprAST &>(*_l);
-      int result = l.eval();
-      if (_op == "-")
-      {
-        result = -result;
-      }
-      else if (_op == "!")
-      {
-        result = !result;
-      }
-      return result;
-    }
-    else if (_type == ExpTypes::Const)
-    {
-      NumberAST &l = dynamic_cast<NumberAST &>(*_l);
-      return l.value;
+      auto tid1 = GetSlotAllocator().getSlot();
+      auto tid2 = GetSlotAllocator().getSlot();
+      calc += format("\t%{} = ne {}, 0\n", tid1, _l->dump());
+      calc += format("\t%{} = ne {}, 0\n", tid2, _r->dump());
+      calc += format("\t%{} = and %{}, %{}\n", _id, tid1, tid2);
     }
     else
     {
-      throw logic_error("invalid expr type");
-      return 0;
+      calc = format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
     }
+
+    return format("{}{}{}", calc_l, calc_r, calc);
+  }
+  int eval() const override
+  {
+    int result = 0;
+    ExprAST &l = dynamic_cast<ExprAST &>(*_l);
+    ExprAST &r = dynamic_cast<ExprAST &>(*_r);
+    int wl = l.eval();
+    int wr = r.eval();
+    if (_op == "+")
+      result = wl + wr;
+    else if (_op == "-")
+      result = wl - wr;
+    else if (_op == "*")
+      result = wl * wr;
+    else if (_op == "/")
+      result = wl / wr;
+    else if (_op == "%")
+      result = wl % wr;
+    else if (_op == ">")
+      result = wl > wr;
+    else if (_op == "<")
+      result = wl < wr;
+    else if (_op == ">=")
+      result = wl >= wr;
+    else if (_op == "<=")
+      result = wl <= wr;
+    else if (_op == "==")
+      result = wl == wr;
+    else if (_op == "!=")
+      result = wl != wr;
+    else if (_op == "&&")
+      result = wl && wr;
+    else if (_op == "||")
+      result = wl || wr;
+    else
+      throw logic_error(format("unknown op {}", _op));
+    return result;
+  }
+};
+
+struct FuncCallExprAST : public ExprAST
+{
+  vector<unique_ptr<ExprAST>> _params;
+  string _ident;
+  FuncCallExprAST(string *ident, vector<unique_ptr<BaseAST>> *params = nullptr)
+      : _ident(*unique_ptr<string>(ident))
+  {
+    if (params)
+      for (auto &p : *params)
+      {
+        _params.push_back(derived_cast<ExprAST>(move(p)));
+      }
+  }
+  string dump() const override
+  {
+    auto type = get<BaseTypes>(GetTableStack().query(_ident)->_data);
+    if (type == BaseTypes::Integer)
+    {
+      assert(_id != -1);
+      return format("%{}", _id);
+    }
+    return "";
+  }
+  string dump_inst() const override
+  {
+    string res;
+    for (auto &p : _params)
+      res += p->dump_inst();
+    auto type = get<BaseTypes>(GetTableStack().query(_ident)->_data);
+    if (type == BaseTypes::Integer)
+    {
+      _id = GetSlotAllocator().getSlot();
+      res += format("\t%{} = ", _id);
+    }
+    res += format("\tcall @{}(", _ident);
+    res += DumpList(_params);
+    res += ")\n";
+    return res;
   }
 };
 
 class RetStmtAST : public BaseAST
 {
 public:
-  unique_ptr<BaseAST> _expr;
-  const ExprAST &expr() const { return dynamic_cast<const ExprAST &>(*_expr); }
+  unique_ptr<ExprAST> _expr;
+  RetStmtAST(ExprAST *expr = nullptr) : _expr(expr) {}
   string dump() const override
   {
     if (!_expr)
       return "\tret\n";
-    assert(typeid(*_expr) == typeid(ExprAST));
-    auto inst = expr().dump_inst();
-    auto id = expr().dump();
-    return format("{}\tret {}\n", inst, id);
+    auto inst = _expr->dump_inst();
+    return format("{}\tret {}\n", inst, _expr->dump());
   }
 };
 
@@ -445,7 +458,7 @@ public:
   string dump() const override { return format("{}", _type); }
 };
 
-BaseAST *concat(const string &op, unique_ptr<BaseAST> l, unique_ptr<BaseAST> r);
+ExprAST *concat(const string &op, ExprAST *l, ExprAST *r);
 BaseTypes parse_type(const string &t);
 
 class DeclAST : public BaseAST
@@ -603,16 +616,5 @@ class ContinueStmt : public BaseAST
     inst += format("\tjump %{}\n", std::get<string>(GetTableStack().query("while_entry")->_data));
     inst += format("%while_body_{}:\n", GenID());
     return inst;
-  }
-};
-
-class FuncFParamAST : public BaseAST
-{
-public:
-  BaseTypes _type;
-  string _ident;
-  string dump() const override
-  {
-    return format("@{}:{}", *GetTableStack().rename(_ident), _type);
   }
 };

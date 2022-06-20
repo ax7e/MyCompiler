@@ -10,15 +10,15 @@ Grammar
     2 CompUnitList: FuncDef
     3             | CompUnitList FuncDef
 
-    4 FuncDef: INT IDENT '(' FuncFParamList ')' Block
-    5        | VOID IDENT '(' FuncFParamList ')' Block
+    4 FuncDef: INT IDENT '(' FuncDefParamList ')' Block
+    5        | VOID IDENT '(' FuncDefParamList ')' Block
     6        | INT IDENT '(' ')' Block
     7        | VOID IDENT '(' ')' Block
 
-    8 FuncFParamList: FuncFParamList ',' FuncFParam
-    9               | FuncFParam
+    8 FuncDefParamList: FuncDefParamList ',' FuncDefParam
+    9               | FuncDefParam
 
-   10 FuncFParam: INT IDENT
+   10 FuncDefParam: INT IDENT
    11           | VOID IDENT
 
    12 Block: '{' BlockItemList '}'
@@ -158,10 +158,10 @@ Nonterminals, with rules where they appear
     FuncDef <ast_val> (34)
         on left: 4 5 6 7
         on right: 2 3
-    FuncFParamList <vec_val> (35)
+    FuncDefParamList <vec_val> (35)
         on left: 8 9
         on right: 4 5 8
-    FuncFParam <ast_val> (36)
+    FuncDefParam <ast_val> (36)
         on left: 10 11
         on right: 8 9
     Block <ast_val> (37)
@@ -267,7 +267,7 @@ State 0
 
 State 1
 
-    4 FuncDef: INT . IDENT '(' FuncFParamList ')' Block
+    4 FuncDef: INT . IDENT '(' FuncDefParamList ')' Block
     6        | INT . IDENT '(' ')' Block
 
     IDENT  shift, and go to state 6
@@ -275,7 +275,7 @@ State 1
 
 State 2
 
-    5 FuncDef: VOID . IDENT '(' FuncFParamList ')' Block
+    5 FuncDef: VOID . IDENT '(' FuncDefParamList ')' Block
     7        | VOID . IDENT '(' ')' Block
 
     IDENT  shift, and go to state 7
@@ -310,7 +310,7 @@ State 5
 
 State 6
 
-    4 FuncDef: INT IDENT . '(' FuncFParamList ')' Block
+    4 FuncDef: INT IDENT . '(' FuncDefParamList ')' Block
     6        | INT IDENT . '(' ')' Block
 
     '('  shift, and go to state 10
@@ -318,7 +318,7 @@ State 6
 
 State 7
 
-    5 FuncDef: VOID IDENT . '(' FuncFParamList ')' Block
+    5 FuncDef: VOID IDENT . '(' FuncDefParamList ')' Block
     7        | VOID IDENT . '(' ')' Block
 
     '('  shift, and go to state 11
@@ -340,40 +340,40 @@ State 9
 
 State 10
 
-    4 FuncDef: INT IDENT '(' . FuncFParamList ')' Block
+    4 FuncDef: INT IDENT '(' . FuncDefParamList ')' Block
     6        | INT IDENT '(' . ')' Block
 
     INT   shift, and go to state 12
     VOID  shift, and go to state 13
     ')'   shift, and go to state 14
 
-    FuncFParamList  go to state 15
-    FuncFParam      go to state 16
+    FuncDefParamList  go to state 15
+    FuncDefParam      go to state 16
 
 
 State 11
 
-    5 FuncDef: VOID IDENT '(' . FuncFParamList ')' Block
+    5 FuncDef: VOID IDENT '(' . FuncDefParamList ')' Block
     7        | VOID IDENT '(' . ')' Block
 
     INT   shift, and go to state 12
     VOID  shift, and go to state 13
     ')'   shift, and go to state 17
 
-    FuncFParamList  go to state 18
-    FuncFParam      go to state 16
+    FuncDefParamList  go to state 18
+    FuncDefParam      go to state 16
 
 
 State 12
 
-   10 FuncFParam: INT . IDENT
+   10 FuncDefParam: INT . IDENT
 
     IDENT  shift, and go to state 19
 
 
 State 13
 
-   11 FuncFParam: VOID . IDENT
+   11 FuncDefParam: VOID . IDENT
 
     IDENT  shift, and go to state 20
 
@@ -389,8 +389,8 @@ State 14
 
 State 15
 
-    4 FuncDef: INT IDENT '(' FuncFParamList . ')' Block
-    8 FuncFParamList: FuncFParamList . ',' FuncFParam
+    4 FuncDef: INT IDENT '(' FuncDefParamList . ')' Block
+    8 FuncDefParamList: FuncDefParamList . ',' FuncDefParam
 
     ')'  shift, and go to state 23
     ','  shift, and go to state 24
@@ -398,9 +398,9 @@ State 15
 
 State 16
 
-    9 FuncFParamList: FuncFParam .
+    9 FuncDefParamList: FuncDefParam .
 
-    $default  reduce using rule 9 (FuncFParamList)
+    $default  reduce using rule 9 (FuncDefParamList)
 
 
 State 17
@@ -414,8 +414,8 @@ State 17
 
 State 18
 
-    5 FuncDef: VOID IDENT '(' FuncFParamList . ')' Block
-    8 FuncFParamList: FuncFParamList . ',' FuncFParam
+    5 FuncDef: VOID IDENT '(' FuncDefParamList . ')' Block
+    8 FuncDefParamList: FuncDefParamList . ',' FuncDefParam
 
     ')'  shift, and go to state 26
     ','  shift, and go to state 24
@@ -423,16 +423,16 @@ State 18
 
 State 19
 
-   10 FuncFParam: INT IDENT .
+   10 FuncDefParam: INT IDENT .
 
-    $default  reduce using rule 10 (FuncFParam)
+    $default  reduce using rule 10 (FuncDefParam)
 
 
 State 20
 
-   11 FuncFParam: VOID IDENT .
+   11 FuncDefParam: VOID IDENT .
 
-    $default  reduce using rule 11 (FuncFParam)
+    $default  reduce using rule 11 (FuncDefParam)
 
 
 State 21
@@ -453,7 +453,7 @@ State 22
 
 State 23
 
-    4 FuncDef: INT IDENT '(' FuncFParamList ')' . Block
+    4 FuncDef: INT IDENT '(' FuncDefParamList ')' . Block
 
     '{'  shift, and go to state 21
 
@@ -462,12 +462,12 @@ State 23
 
 State 24
 
-    8 FuncFParamList: FuncFParamList ',' . FuncFParam
+    8 FuncDefParamList: FuncDefParamList ',' . FuncDefParam
 
     INT   shift, and go to state 12
     VOID  shift, and go to state 13
 
-    FuncFParam  go to state 29
+    FuncDefParam  go to state 29
 
 
 State 25
@@ -479,7 +479,7 @@ State 25
 
 State 26
 
-    5 FuncDef: VOID IDENT '(' FuncFParamList ')' . Block
+    5 FuncDef: VOID IDENT '(' FuncDefParamList ')' . Block
 
     '{'  shift, and go to state 21
 
@@ -533,21 +533,21 @@ State 27
 
 State 28
 
-    4 FuncDef: INT IDENT '(' FuncFParamList ')' Block .
+    4 FuncDef: INT IDENT '(' FuncDefParamList ')' Block .
 
     $default  reduce using rule 4 (FuncDef)
 
 
 State 29
 
-    8 FuncFParamList: FuncFParamList ',' FuncFParam .
+    8 FuncDefParamList: FuncDefParamList ',' FuncDefParam .
 
-    $default  reduce using rule 8 (FuncFParamList)
+    $default  reduce using rule 8 (FuncDefParamList)
 
 
 State 30
 
-    5 FuncDef: VOID IDENT '(' FuncFParamList ')' Block .
+    5 FuncDef: VOID IDENT '(' FuncDefParamList ')' Block .
 
     $default  reduce using rule 5 (FuncDef)
 

@@ -33,7 +33,9 @@ using namespace std;
   std::string *str_val;
   int int_val;
   BaseAST *ast_val; 
-  std::vector<PBase > *vec_val;
+  ExprAST *exp_ast_val; 
+  NumberAST *number_ast_val; 
+  std::vector<PBase> *vec_val;
 }
 
 // lexer 返回的所有 token 种类的声明
@@ -44,11 +46,12 @@ using namespace std;
 
 // 非终结符的类型定义
 %type <str_val> UnaryOp LVal
-%type <ast_val> FuncDef Block Stmt Number  
-%type <ast_val> Decl ConstDecl ConstDef ConstInitVal ConstExp
-%type <ast_val> MulExp AddExp RelExp EqExp LAndExp LOrExp Exp PrimaryExp UnaryExp
-%type <vec_val> BlockItemList ConstDefList VarDefList CompUnitList FuncFParamList FuncRParamList 
-%type <ast_val> VarDecl VarDef InitVal BlockItem FuncFParam
+%type <ast_val> FuncDef Block Stmt 
+%type <number_ast_val> Number  
+%type <ast_val> Decl ConstDecl ConstDef ConstInitVal 
+%type <exp_ast_val> MulExp AddExp RelExp EqExp LAndExp LOrExp Exp PrimaryExp UnaryExp ConstExp
+%type <vec_val> BlockItemList ConstDefList VarDefList CompUnitList FuncDefParamList FuncCallParamList 
+%type <ast_val> VarDecl VarDef InitVal BlockItem FuncDefParam
 %type <ast_val> OpenStmt ClosedStmt SimpleStmt 
 
 
@@ -64,23 +67,21 @@ CompUnit
 
 CompUnitList
   : FuncDef {
-    auto v = new vector<PBase>();
-    v->push_back(PBase($1));
-    $$ = v;
+    $$ = new vector<PBase>(); 
+    $$->push_back(PBase($1));
   }
   | CompUnitList FuncDef {
-    auto v = $1;
-    v->push_back(PBase($2));
-    $$ = v;
+    $$ = $1;
+    $$->push_back(PBase($2));
   }
   ;
 
 // Function definition
 FuncDef
-  : INT IDENT '(' FuncFParamList ')' Block {
+  : INT IDENT '(' FuncDefParamList ')' Block {
     $$ = new FuncDefAST(BaseTypes::Integer, $2, $4, $6); 
   }
-  | VOID IDENT '(' FuncFParamList ')' Block {
+  | VOID IDENT '(' FuncDefParamList ')' Block {
     $$ = new FuncDefAST(BaseTypes::Void, $2, $4, $6); 
   }
   | INT IDENT '('')' Block  {
@@ -91,27 +92,27 @@ FuncDef
   }
   ;
 
-FuncFParamList 
-  : FuncFParamList ',' FuncFParam {
+FuncDefParamList 
+  : FuncDefParamList ',' FuncDefParam {
     $$ = $1;
     $$->push_back(PBase($3));
   }
-  | FuncFParam {
+  | FuncDefParam {
     auto v = new vector<PBase>();
     v->push_back(PBase($1));
     $$ = v;
   }
   ;
 
-FuncFParam
+FuncDefParam
   : INT IDENT {
-    auto t = new FuncFParamAST();
+    auto t = new FuncDefParamAST();
     t->_ident = *unique_ptr<string>($2);
     t->_type = BaseTypes::Integer;
     $$ = t;
   }
   | VOID IDENT {
-    auto t = new FuncFParamAST();
+    auto t = new FuncDefParamAST();
     t->_ident = *unique_ptr<string>($2);
     t->_type = BaseTypes::Void;
     $$ = t;
@@ -137,13 +138,10 @@ Stmt
 
 SimpleStmt
   : RETURN Exp ';' {
-    auto ast = new RetStmtAST(); 
-    ast->_expr = PBase($2);
-    $$ = ast;
+    $$ = new RetStmtAST($2); 
   }
   | RETURN ';' {
-    auto ast = new RetStmtAST(); 
-    $$ = ast;
+    $$ = new RetStmtAST(); 
   }
   | LVal '=' Exp ';' {
     auto ast = new AssignAST();
@@ -183,7 +181,7 @@ LOrExp
     $$ = $1; 
   }
   | LOrExp OR_CONST LAndExp {
-    $$ = concat("||", PBase($1), PBase($3)); 
+    $$ = concat("||", $1, $3); 
   }
   ;
 
@@ -192,7 +190,7 @@ LAndExp
     $$ = $1;
   } 
   | LAndExp AND_CONST EqExp {
-    $$ = concat("&&", PBase($1), PBase($3)); 
+    $$ = concat("&&", $1, $3); 
   }
   ;
 
@@ -201,7 +199,7 @@ EqExp
     $$ = $1;
   } 
   | EqExp EQ_OP RelExp {
-    $$ = concat(*unique_ptr<string>($2), PBase($1), PBase($3)); 
+    $$ = concat(*unique_ptr<string>($2), $1, $3); 
   }
   ;
 
@@ -210,7 +208,7 @@ RelExp
     $$ = $1;
   } 
   | RelExp REL_OP AddExp {
-    $$ = concat(*unique_ptr<string>($2), PBase($1), PBase($3)); 
+    $$ = concat(*unique_ptr<string>($2), $1, $3); 
   }
   ;
 
@@ -220,10 +218,10 @@ AddExp
     $$ = $1;
   } 
   | AddExp '+' MulExp {
-    $$ = concat("+", PBase($1), PBase($3)); 
+    $$ = concat("+", $1, $3); 
   }
   | AddExp '-' MulExp {
-    $$ = concat("-", PBase($1), PBase($3)); 
+    $$ = concat("-", $1, $3); 
   }
   ;
 
@@ -232,13 +230,13 @@ MulExp
     $$ = $1;
   } 
   | MulExp '*' UnaryExp {
-    $$ = concat("*", PBase($1), PBase($3)); 
+    $$ = concat("*", ($1), ($3)); 
   }
   | MulExp '/' UnaryExp {
-    $$ = concat("/", PBase($1), PBase($3)); 
+    $$ = concat("/", ($1), ($3)); 
   }
   | MulExp '%' UnaryExp {
-    $$ = concat("%", PBase($1), PBase($3)); 
+    $$ = concat("%", ($1), ($3)); 
   }
   ;
 
@@ -259,14 +257,12 @@ PrimaryExp
     $$ = $2;
   }
   | Number {
-    auto ast = new ExprAST(); 
-    ast->_type = ExpTypes::Const;
-    ast->_l = PBase($1); 
+    auto ast = new ConstExprAST(); 
+    ast->_num = unique_ptr<NumberAST>($1);
     $$ = ast; 
   }
   | LVal {
-    auto ast = new ExprAST(); 
-    ast->_type = ExpTypes::LVal;
+    auto ast = new LValExprAST(); 
     ast->_ident = *unique_ptr<string>($1);
     $$ = ast; 
   }
@@ -277,34 +273,26 @@ UnaryExp
     $$ = $1;
   }
   | UnaryOp UnaryExp {
-    auto ast = new ExprAST(); 
+    auto ast = new UnaryExprAST(); 
     ast->_op = *unique_ptr<string>($1); 
-    ast->_type = ExpTypes::Unary;
-    ast->_l = PBase($2); 
+    ast->_child = unique_ptr<ExprAST>($2); 
     $$ = ast; 
   }
   | IDENT '(' ')' {
-    auto ast = new ExprAST(); 
-    ast->_type = ExpTypes::FuncCall;
-    ast->_ident = *unique_ptr<string>($1);
-    $$ = ast;
+    $$ = new FuncCallExprAST($1); 
   }
-  | IDENT '(' FuncRParamList ')' {
-    auto ast = new ExprAST(); 
-    ast->_type = ExpTypes::FuncCall;
-    ast->_ident = *unique_ptr<string>($1);
-    ast->_params = move(*unique_ptr<vector<PBase>>($3));
-    $$ = ast;
+  | IDENT '(' FuncCallParamList ')' {
+    $$ = new FuncCallExprAST($1, $3); 
   }
   ;
 
-FuncRParamList :
+FuncCallParamList :
   Exp {
     auto v = new vector<PBase>();
     v->push_back(PBase($1));
     $$ = v;
   }
-  | FuncRParamList ',' Exp {
+  | FuncCallParamList ',' Exp {
     $$ = $1;
     $$->push_back(PBase($3));
   }
