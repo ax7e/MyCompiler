@@ -106,11 +106,12 @@ public:
 
   void insert(string id, Symbol w)
   {
-    fmt::print("insert {}\n", id);
+    fmt::print("insert {}", id);
     if (w.index() == 0)
       fmt::print(",null", id);
     else
       fmt::print(",{}", std::get<int>(w));
+    fmt::print("\n");
     _stack.back().insert(id, w);
   }
 

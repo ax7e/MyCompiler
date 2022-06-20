@@ -89,6 +89,13 @@ string FuncDefAST::dump() const
   if (_type != BaseTypes::Void)
     res += format(": {} ", _type);
   res += format("{{\n%entry:\n");
+  for (auto &pp : _params)
+  {
+    auto &p = dynamic_cast<FuncFParamAST &>(*pp);
+    auto name = *GetTableStack().rename(p._ident);
+    res += format("\t%{} = alloc i32\n", name);
+    res += format("\tstore @{},%{}\n", name, name);
+  }
   string blk = format("{}", *_block);
   if (blk == "")
     res += "\tret\n";
