@@ -40,6 +40,13 @@ EqOp          [=|!][=]
 
 "int"           { return INT; }
 "return"        { return RETURN; }
+"const"         { return CONST; }
+"if"            { return IF; }
+"else"          { return ELSE; }
+"while"         { return WHILE; }
+"break"         { return BREAK; }
+"continue"      { return CONTINUE; }
+"void"          { return VOID; }
 
 {Identifier}    { yylval.str_val = new string(yytext); return IDENT; }
 
