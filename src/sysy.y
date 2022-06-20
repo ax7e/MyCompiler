@@ -35,6 +35,7 @@ using namespace std;
   BaseAST *ast_val; 
   ExprAST *exp_ast_val; 
   NumberAST *number_ast_val; 
+  BlockAST *blk_ast_val; 
   std::vector<PBase> *vec_val;
 }
 
@@ -46,12 +47,13 @@ using namespace std;
 
 // 非终结符的类型定义
 %type <str_val> UnaryOp LVal
-%type <ast_val> FuncDef Block Stmt 
+%type <ast_val> FuncDef Stmt 
 %type <number_ast_val> Number  
-%type <ast_val> Decl ConstDecl ConstDef ConstInitVal 
-%type <exp_ast_val> MulExp AddExp RelExp EqExp LAndExp LOrExp Exp PrimaryExp UnaryExp ConstExp
+%type <ast_val> Decl ConstDecl ConstDef
+%type <blk_ast_val> Block
+%type <exp_ast_val> MulExp AddExp RelExp EqExp LAndExp LOrExp Exp PrimaryExp UnaryExp ConstExp ConstInitVal InitVal
 %type <vec_val> BlockItemList ConstDefList VarDefList CompUnitList FuncDefParamList FuncCallParamList 
-%type <ast_val> VarDecl VarDef InitVal BlockItem FuncDefParam
+%type <ast_val> VarDecl VarDef BlockItem FuncDefParam
 %type <ast_val> OpenStmt ClosedStmt SimpleStmt 
 
 
@@ -71,6 +73,14 @@ CompUnitList
     $$->push_back(PBase($1));
   }
   | CompUnitList FuncDef {
+    $$ = $1;
+    $$->push_back(PBase($2));
+  }
+  | Decl {
+    $$ = new vector<PBase>(); 
+    $$->push_back(PBase($1));
+  }
+  | CompUnitList Decl {
     $$ = $1;
     $$->push_back(PBase($2));
   }
@@ -329,7 +339,7 @@ ConstDef
     auto ast = new DefAST(
       DeclTypes::Const,
       *unique_ptr<string>($1), // ident
-      PBase($3)); // init
+      unique_ptr<ExprAST>($3)); // init
     $$ = ast;
   }
   ;
@@ -368,7 +378,7 @@ VarDef
     $$ = ast;
   }
   | IDENT '=' InitVal {
-    auto ast = new DefAST(DeclTypes::Variable, *unique_ptr<string>($1), PBase($3));
+    auto ast = new DefAST(DeclTypes::Variable, *unique_ptr<string>($1), unique_ptr<ExprAST>($3));
     $$ = ast;
   }
   ;

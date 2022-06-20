@@ -38,14 +38,6 @@ enum class DeclTypes
   Const,
   Variable
 };
-enum class ExpTypes
-{
-  Unary,
-  Binary,
-  Const,
-  LVal,
-  FuncCall
-};
 
 class SlotAllocator
 {
@@ -91,6 +83,7 @@ string DumpList(const vector<T> &params)
   }
   return res;
 }
+extern const string LibFuncDecl;
 
 class BaseAST
 {
@@ -151,7 +144,8 @@ public:
   string dump() const override
   {
     GetTableStack().push();
-    string res;
+    RegisterLibFunc();
+    string res = LibFuncDecl;
     for (auto &p : _list)
     {
       res += p->dump();
@@ -178,11 +172,11 @@ class FuncDefAST : public BaseAST
 public:
   BaseTypes _type;
   std::string _ident;
-  PBase _block;
+  unique_ptr<BlockAST> _block;
   vector<unique_ptr<FuncDefParamAST>> _params;
-  FuncDefAST(BaseTypes type, string *ident, vector<PBase> *params, BaseAST *blk) : _type(type),
-                                                                                   _ident(*unique_ptr<string>(ident)),
-                                                                                   _block(blk)
+  FuncDefAST(BaseTypes type, string *ident, vector<PBase> *params, BlockAST *blk) : _type(type),
+                                                                                    _ident(*unique_ptr<string>(ident)),
+                                                                                    _block(blk)
   {
     auto t = unique_ptr<vector<PBase>>(params);
     if (!t)
@@ -259,9 +253,13 @@ struct LValExprAST : public ExprAST
     {
       return format("{}", std::get<int>(r->_data));
     }
+    else if (r->_type == SymbolTypes::GlobalVar)
+    {
+      assert(_id != -1);
+      return format("%{}", _id);
+    }
     else
     {
-      assert(r->_type == SymbolTypes::Var);
       assert(_id != -1);
       return format("%{}", _id);
     }
@@ -274,6 +272,11 @@ struct LValExprAST : public ExprAST
     {
       _id = GetSlotAllocator().getSlot();
       return format("\t%{} = load %{}\n", _id, *GetTableStack().rename(_ident));
+    }
+    else if (r->_type == SymbolTypes::GlobalVar)
+    {
+      _id = GetSlotAllocator().getSlot();
+      return format("\t%{} = load @{}\n", _id, *GetTableStack().rename(_ident));
     }
     return "";
   }
@@ -319,6 +322,98 @@ struct BinaryExprAST : public ExprAST
     _id = GetSlotAllocator().getSlot();
     if (_op == "||")
     {
+      //  jump %entry
+      //%entry:
+      //  %t0 = alloc i32
+      //  %t1 = ne l->dump(), 0
+      //  store %t1, %t0
+      //  br %t1, %then, %else
+      //%then:
+      //%else:
+      //  %t3 = ne r->dump(), 0
+      //  store %t3, %t0
+      //%end:
+      //  id = load %t0
+      auto t0 = format("%{}", GetSlotAllocator().getSlot());
+      auto t1 = format("%{}", GetSlotAllocator().getSlot());
+      auto t2 = format("%{}", GetSlotAllocator().getSlot());
+      auto tagEntry = format("%shortcut_entry_{}", GenID());
+      auto tagThen = format("%shortcut_then_{}", GenID());
+      auto tagElse = format("%shortcut_else_{}", GenID());
+      auto tagEnd = format("%shortcut_end_{}", GenID());
+      calc += format("\tjump {}\n", tagEntry);
+      calc += format("{}:\n", tagEntry);
+      calc += format("\t{} = alloc i32\n", t0);
+      calc += format("{}", calc_l);
+      calc += format("\t{} = ne {}, 0\n", t1, _l->dump());
+      calc += format("\tbr {}, {}, {}\n", t1, tagThen, tagElse);
+      calc += format("{}:\n", tagThen);
+      calc += format("store {}, {}", t1, t0);
+      calc += format("\tjump {}\n", tagEnd);
+      calc += format("{}:\n", tagElse);
+      calc += format("{}", calc_r);
+      calc += format("\t{} = ne {}, 0\n", t2, _r->dump());
+      calc += format("\tstore {}, {}\n", t2, t0);
+      calc += format("\tjump {}\n", tagEnd);
+      calc += format("{}:\n", tagEnd);
+      calc += format("\t%{} = load {}", _id, t0);
+      return calc;
+    }
+    else if (_op == "&&")
+    {
+      //  jump %entry
+      //%entry:
+      //  %t0 = alloc i32
+      //  %t1 = ne l->dump(), 0
+      //  store %t1, %t0
+      //  br %t1, %then, %else
+      //%then:
+      //%else:
+      //  %t3 = ne r->dump(), 0
+      //  store %t3, %t0
+      //%end:
+      //  id = load %t0
+      auto t0 = format("%{}", GetSlotAllocator().getSlot());
+      auto t1 = format("%{}", GetSlotAllocator().getSlot());
+      auto t2 = format("%{}", GetSlotAllocator().getSlot());
+      auto tagEntry = format("%shortcut_entry_{}", GenID());
+      auto tagThen = format("%shortcut_then_{}", GenID());
+      auto tagElse = format("%shortcut_else_{}", GenID());
+      auto tagEnd = format("%shortcut_end_{}", GenID());
+      calc += format("\tjump {}\n", tagEntry);
+      calc += format("{}:\n", tagEntry);
+      calc += format("\t{} = alloc i32\n", t0);
+      calc += format("{}", calc_l);
+      calc += format("\t{} = ne {}, 0\n", t1, _l->dump());
+      calc += format("\tbr {}, {}, {}\n", t1, tagThen, tagElse);
+      calc += format("{}:\n", tagThen);
+      calc += format("{}", calc_r);
+      calc += format("\t{} = ne {}, 0\n", t2, _r->dump());
+      calc += format("\tstore {}, {}\n", t2, t0);
+      calc += format("\tjump {}\n", tagEnd);
+      calc += format("{}:\n", tagElse);
+      calc += format("store {}, {}", t1, t0);
+      calc += format("\tjump {}\n", tagEnd);
+      calc += format("{}:\n", tagEnd);
+      calc += format("\t%{} = load {}", _id, t0);
+      return calc;
+    }
+    else
+    {
+      calc = format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
+    }
+
+    return format("{}{}{}", calc_l, calc_r, calc);
+  }
+  /*
+  string dump_inst() const override
+  {
+    string calc_l, calc_r, calc;
+    calc_l = _l->dump_inst();
+    calc_r = _r->dump_inst();
+    _id = GetSlotAllocator().getSlot();
+    if (_op == "||")
+    {
       auto tid = GetSlotAllocator().getSlot();
       calc = format("\t%{} = or {}, {}\n", tid, _l->dump(), _r->dump());
       calc += format("\t%{} = ne %{}, 0\n", _id, tid);
@@ -338,6 +433,7 @@ struct BinaryExprAST : public ExprAST
 
     return format("{}{}{}", calc_l, calc_r, calc);
   }
+  */
   int eval() const override
   {
     int result = 0;
@@ -487,29 +583,38 @@ class DefAST : public BaseAST
 public:
   DeclTypes _type;
   string _ident;
-  optional<PBase> _init;
+  optional<unique_ptr<ExprAST>> _init;
   BaseTypes _bType;
   DefAST(DeclTypes type, const string &i) : _type(type), _ident(i) {}
-  DefAST(DeclTypes type, const string &i, PBase p) : _type(type), _ident(i), _init(move(p)) {}
+  DefAST(DeclTypes type, const string &i, unique_ptr<ExprAST> p) : _type(type), _ident(i), _init(move(p)) {}
   string dump() const override
   {
     string calc;
     if (_type == DeclTypes::Const)
     {
-      assert(_init.has_value());
-      auto &init = dynamic_cast<ExprAST &>(**_init);
-      GetTableStack().insert(_ident, Symbol{SymbolTypes::Const, init.eval()});
+      GetTableStack().insert(_ident, Symbol{SymbolTypes::Const, (*_init)->eval()});
     }
     else
     {
-      GetTableStack().insert(_ident, Symbol{SymbolTypes::Var, 0});
+      auto type = GetTableStack().isGlobal() ? SymbolTypes::GlobalVar : SymbolTypes::Var;
+
+      GetTableStack().insert(_ident, Symbol{type, BaseTypes::Integer});
+
       auto r = *GetTableStack().rename(_ident);
-      calc += format("\t%{} = alloc i32\n", r);
-      if (_init.has_value())
+      if (type == SymbolTypes::GlobalVar)
       {
-        auto &p = dynamic_cast<ExprAST &>(*_init.value());
-        calc += p.dump_inst();
-        calc += format("\tstore {}, %{}\n", p.dump(), r);
+        auto init = _init.has_value() ? format("{}", (*_init)->eval()) : "zeroinit";
+        calc += format("global @{} = alloc i32, {}\n", r, init);
+      }
+      else
+      {
+        calc += format("\t%{} = alloc i32\n", r);
+        if (_init.has_value())
+        {
+          auto &p = dynamic_cast<ExprAST &>(*_init.value());
+          calc += p.dump_inst();
+          calc += format("\tstore {}, %{}\n", p.dump(), r);
+        }
       }
     }
     return calc;
@@ -526,7 +631,9 @@ public:
     auto &r = dynamic_cast<ExprAST &>(*_r);
     string code;
     code += r.dump_inst();
-    code += format("\tstore {}, %{}\n", r.dump(), *GetTableStack().rename(*_id));
+    auto type = GetTableStack().query(*_id)->_type;
+    auto mark = type == SymbolTypes::GlobalVar ? "@" : "%";
+    code += format("\tstore {}, {}{}\n", r.dump(), mark, *GetTableStack().rename(*_id));
     return code;
   }
 };

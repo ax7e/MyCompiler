@@ -30,6 +30,7 @@ int GenID();
 enum class SymbolTypes
 {
   Var,
+  GlobalVar,
   Func,
   Str,
   Const
@@ -95,6 +96,7 @@ public:
     }
     return std::nullopt;
   }
+  bool isGlobal() const { return _stack.size() == 1; }
 
   void insert(string id, Symbol w)
   {
@@ -120,3 +122,4 @@ public:
 };
 
 TableStack &GetTableStack();
+void RegisterLibFunc();

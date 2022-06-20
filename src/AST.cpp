@@ -54,10 +54,17 @@ string BlockAST::dump() const
 bool BlockAST::hasRetStmt() const
 {
   for (const auto &p : _list)
+  {
+    if (typeid(*p) == typeid(BlockAST))
+    {
+      if (dynamic_cast<BlockAST &>(*p).hasRetStmt())
+        return true;
+    }
     if (typeid(*p) == typeid(RetStmtAST))
     {
       return true;
     }
+  }
   return false;
 }
 
@@ -75,12 +82,13 @@ BaseAST *WrapBlock(BaseAST *ast)
 string FuncDefAST::dump() const
 {
   assert(typeid(*_block) == typeid(BlockAST));
+  GetTableStack().insert(_ident, Symbol{SymbolTypes::Func, _type});
   GetSlotAllocator().clear();
   string res = format("fun @{}(", _ident);
   GetTableStack().push();
   for (auto &p : _params)
   {
-    GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident, Symbol());
+    GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident, Symbol{SymbolTypes::Var, BaseTypes::Integer});
   }
   GetTableStack().banPush();
   res += DumpList(_params);
@@ -96,12 +104,10 @@ string FuncDefAST::dump() const
     res += format("\tstore @{},%{}\n", name, name);
   }
   string blk = format("{}", *_block);
-  if (blk == "")
+  res += blk;
+  if (!_block->hasRetStmt())
     res += "\tret\n";
-  else
-    res += blk;
   res += format("}}\n");
-  GetTableStack().insert(_ident, Symbol{SymbolTypes::Func, _type});
   return res;
 }
 
@@ -109,3 +115,13 @@ BlockAST &FuncDefAST::block() const
 {
   return dynamic_cast<BlockAST &>(*_block);
 }
+
+const string LibFuncDecl =
+    "decl @getint(): i32\n"
+    "decl @getch(): i32\n"
+    "decl @getarray(*i32): i32\n"
+    "decl @putint(i32)\n"
+    "decl @putch(i32)\n"
+    "decl @putarray(i32, *i32)\n"
+    "decl @starttime()\n"
+    "decl @stoptime()\n\n";
