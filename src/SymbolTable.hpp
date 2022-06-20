@@ -22,32 +22,24 @@ using std::string;
 using std::unique_ptr;
 using std::variant;
 using std::vector;
+enum class BaseTypes;
 class BaseAST;
 typedef unique_ptr<BaseAST> PBase;
-typedef variant<monostate, int> Symbol;
-
 int GenID();
 
-class HelperTable
+enum class SymbolTypes
 {
-  map<string, vector<int>> _table;
-
-public:
-  void insert(const string &id, int w)
-  {
-    _table[id].push_back(w);
-  }
-  int query(const string &id)
-  {
-    return _table[id].back();
-  }
-  void unregister(const string &id)
-  {
-    _table[id].pop_back();
-  }
+  Var,
+  Func,
+  Str,
+  Const
 };
 
-HelperTable &GetHelperTable();
+struct Symbol
+{
+  SymbolTypes _type;
+  std::variant<int, string, BaseTypes> _data;
+};
 
 class SymbolTable
 {
@@ -106,12 +98,6 @@ public:
 
   void insert(string id, Symbol w)
   {
-    fmt::print("insert {}", id);
-    if (w.index() == 0)
-      fmt::print(",null", id);
-    else
-      fmt::print(",{}", std::get<int>(w));
-    fmt::print("\n");
     _stack.back().insert(id, w);
   }
 

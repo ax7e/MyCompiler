@@ -102,7 +102,7 @@ string FuncDefAST::dump() const
   else
     res += blk;
   res += format("}}\n");
-  GetTableStack().insert(_ident, _type == BaseTypes::Integer);
+  GetTableStack().insert(_ident, Symbol{SymbolTypes::Func, _type});
   return res;
 }
 

@@ -195,19 +195,20 @@ public:
       assert(_ident.has_value());
       auto r = GetTableStack().query(*_ident);
       assert(r.has_value());
-      if (r->index() == 0)
+      if (r->_type == SymbolTypes::Const)
       {
-        calc = format("%{}", _id);
+        calc = format("{}", std::get<int>(r->_data));
       }
       else
       {
-        calc = format("{}", std::get<int>(*r));
-      };
+        assert(r->_type == SymbolTypes::Var);
+        calc = format("%{}", _id);
+      }
     }
     else if (_type == ExpTypes::FuncCall)
     {
-      auto type = get<int>(*GetTableStack().query(*_ident));
-      if (type == 1)
+      auto type = get<BaseTypes>(GetTableStack().query(*_ident)->_data);
+      if (type == BaseTypes::Integer)
       {
         assert(_id != -1);
         calc = format("%{}", _id);
@@ -268,7 +269,7 @@ public:
       assert(_ident.has_value());
       auto r = GetTableStack().query(*_ident);
       assert(r.has_value());
-      if (r->index() == 0)
+      if (r->_type == SymbolTypes::Var)
       {
         _id = GetSlotAllocator().getSlot();
         calc += format("\t%{} = load %{}\n", _id, *GetTableStack().rename(_ident.value()));
@@ -283,8 +284,8 @@ public:
         auto &pp = dynamic_cast<ExprAST &>(*p);
         res += pp.dump_inst();
       }
-      auto type = get<int>(*GetTableStack().query(*_ident));
-      if (type == 1)
+      auto type = get<BaseTypes>(GetTableStack().query(*_ident)->_data);
+      if (type == BaseTypes::Integer)
       {
         _id = GetSlotAllocator().getSlot();
         res += format("\t%{} = ", _id);
@@ -303,8 +304,7 @@ public:
       assert(_ident.has_value());
       auto res = GetTableStack().query(*_ident);
       assert(res.has_value());
-      assert(res->index() == 1);
-      return get<int>(*res);
+      return get<int>(res->_data);
     }
     else if (_type == ExpTypes::Binary)
     {
@@ -485,11 +485,11 @@ public:
     {
       assert(_init.has_value());
       auto &init = dynamic_cast<ExprAST &>(**_init);
-      GetTableStack().insert(_ident, init.eval());
+      GetTableStack().insert(_ident, Symbol{SymbolTypes::Const, init.eval()});
     }
     else
     {
-      GetTableStack().insert(_ident, Symbol());
+      GetTableStack().insert(_ident, Symbol{SymbolTypes::Var, 0});
       auto r = *GetTableStack().rename(_ident);
       calc += format("\t%{} = alloc i32\n", r);
       if (_init.has_value())
@@ -559,27 +559,27 @@ public:
   const ExprAST &expr() const { return dynamic_cast<const ExprAST &>(*_expr); }
   string dump() const override
   {
-    int labelBody = GenID(),
-        labelEnd = GenID(),
-        labelEntry = GenID();
     assert(typeid(*_body) == typeid(BlockAST));
-    GetHelperTable().insert("while_entry", labelEntry);
-    GetHelperTable().insert("while_body", labelBody);
-    GetHelperTable().insert("while_end", labelEnd);
+
+    string tagBody = format("while_body_{}", GenID());
+    string tagEntry = format("while_entry_{}", GenID());
+    string tagEnd = format("while_end_{}", GenID());
     string res;
-    res += format("\tjump %while_entry_{}\n", labelEntry);
-    res += format("%while_entry_{}:\n", labelEntry);
+    res += format("\tjump %{}\n", tagEntry);
+    res += format("%{}:\n", tagEntry);
     res += expr().dump_inst();
-    res += format("\tbr {}, %while_body_{}, %while_end_{}\n", expr().dump(), labelBody, labelEnd);
-    res += format("%while_body_{}:\n{}", labelBody, _body->dump());
+    res += format("\tbr {}, %{}, %{}\n", expr().dump(), tagBody, tagEnd);
+    GetTableStack().push();
+    GetTableStack().insert("while_entry", Symbol{SymbolTypes::Str, tagEntry});
+    GetTableStack().insert("while_end", Symbol{SymbolTypes::Str, tagEnd});
+    GetTableStack().insert("while_body", Symbol{SymbolTypes::Str, tagBody});
+    GetTableStack().banPush();
+    res += format("%{}:\n{}", tagBody, _body->dump());
     if (!(_body && dynamic_cast<BlockAST &>(*_body).hasRetStmt()))
     {
-      res += format("\tjump %while_entry_{}\n", labelEntry);
+      res += format("\tjump %{}\n", tagEntry);
     }
-    res += format("%while_end_{}:\n", labelEnd);
-    GetHelperTable().unregister("while_entry");
-    GetHelperTable().unregister("while_body");
-    GetHelperTable().unregister("while_end");
+    res += format("%{}:\n", tagEnd);
     return res;
   }
 };
@@ -589,7 +589,7 @@ class BreakStmt : public BaseAST
   string dump() const override
   {
     string inst;
-    inst += format("\tjump %while_end_{}\n", GetHelperTable().query("while_end"));
+    inst += format("\tjump %{}\n", std::get<string>(GetTableStack().query("while_end")->_data));
     inst += format("%while_body_{}:\n", GenID());
     return inst;
   }
@@ -600,7 +600,7 @@ class ContinueStmt : public BaseAST
   string dump() const override
   {
     string inst;
-    inst += format("\tjump %while_entry_{}", GetHelperTable().query("while_entry"));
+    inst += format("\tjump %{}\n", std::get<string>(GetTableStack().query("while_entry")->_data));
     inst += format("%while_body_{}:\n", GenID());
     return inst;
   }
