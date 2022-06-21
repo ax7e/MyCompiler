@@ -22,6 +22,7 @@ using std::make_pair;
 using std::map;
 using std::optional;
 using std::pair;
+using std::shared_ptr;
 using std::string;
 using std::to_string;
 using std::unique_ptr;
@@ -205,6 +206,7 @@ class NumberAST : public BaseAST
 {
 public:
   int value;
+  NumberAST(int v) : value(v) {}
   string dump() const override { return format("{}", value); }
 };
 
@@ -234,6 +236,7 @@ struct ConstExprAST : public ExprAST
   unique_ptr<NumberAST> _num;
   string dump() const override { return format("{}", *_num); }
   string dump_inst() const { return ""; }
+  ConstExprAST(NumberAST *num) : _num(num) {}
   int eval() const override
   {
     return _num->value;
@@ -317,20 +320,21 @@ struct LValVarExprAST : public LValExprAST
 class ArrayRefAST;
 struct LValArrayRefExprAST : public LValExprAST
 {
+  mutable int _ptr = -1;
   unique_ptr<ArrayRefAST> _ref;
   LValArrayRefExprAST(ArrayRefAST *ref) : _ref(ref) {}
   string dump() const override
   {
-    return "";
+    assert(_id != -1);
+    return format("%{}", _id);
   }
   string dump_inst() const override
   {
-    return "";
+    _id = GetSlotAllocator().getSlot();
+    auto res = dump_ref();
+    return format("{}\t%{} = load {}\n", res.first, _id, res.second);
   }
-  pair<string, string> dump_ref() const override
-  {
-    return make_pair(string(), string());
-  }
+  pair<string, string> dump_ref() const;
 };
 
 struct UnaryExprAST : public ExprAST
@@ -378,7 +382,7 @@ struct BinaryExprAST : public ExprAST
       //  store %t3, %t0
       //%end:
       //  id = load %t0
-      auto t0 = format("%{}", GetSlotAllocator().getSlot());
+      auto t0 = format("@{}", GetSlotAllocator().getSlot());
       auto t1 = format("%{}", GetSlotAllocator().getSlot());
       auto t2 = format("%{}", GetSlotAllocator().getSlot());
       auto tagEntry = format("%shortcut_entry_{}", GenID());
@@ -436,7 +440,7 @@ struct BinaryExprAST : public ExprAST
       calc += format("\tstore {}, {}\n", t2, t0);
       calc += format("\tjump {}\n", tagEnd);
       calc += format("{}:\n", tagElse);
-      calc += format("store {}, {}", t1, t0);
+      calc += format("\tstore {}, {}\n", t1, t0);
       calc += format("\tjump {}\n", tagEnd);
       calc += format("{}:\n", tagEnd);
       calc += format("\t%{} = load {}", _id, t0);
@@ -652,7 +656,7 @@ public:
       }
       else
       {
-        calc += format("\t%{} = alloc i32\n", r);
+        calc += format("\t@{} = alloc i32\n", r);
         if (_init.has_value())
         {
           auto &p = dynamic_cast<ExprAST &>(*_init.value());
@@ -676,7 +680,7 @@ public:
     string code;
     code += _r->dump_inst();
     auto ref = _l->dump_ref();
-    code += format("\t{}store {}, {}\n", ref.first, _r->dump(), ref.second);
+    code += format("{}\tstore {}, {}\n", ref.first, _r->dump(), ref.second);
     return code;
   }
 };
@@ -772,23 +776,15 @@ class ContinueStmt : public BaseAST
 class ArrayInitListAST;
 class ArrayRefAST;
 
+vector<int> FormatInitTable(const ArrayRefAST &r, const ArrayInitListAST &p);
+
 struct ArrayDefAST : public BaseAST
 {
   DeclTypes _type;
-  unique_ptr<ArrayRefAST> _arrayType;
+  shared_ptr<ArrayRefAST> _arrayType;
   optional<unique_ptr<ArrayInitListAST>> _init;
-  ArrayDefAST(DeclTypes type, ArrayRefAST *arrayType, ArrayInitListAST *init = nullptr)
-      : _type(type), _arrayType(arrayType)
-  {
-    if (init)
-    {
-      _init = unique_ptr<ArrayInitListAST>(init);
-    }
-  }
-  string dump() const override
-  {
-    return "";
-  }
+  ArrayDefAST(DeclTypes type, ArrayRefAST *arrayType, ArrayInitListAST *init = nullptr);
+  string dump() const override;
 };
 
 struct ArrayInitListAST : public BaseAST
@@ -803,19 +799,37 @@ struct ArrayInitListAST : public BaseAST
   }
   string dump() const override
   {
+    throw logic_error("dump function is deleted");
     return "";
   }
 };
 
 struct ArrayRefAST : public BaseAST
 {
-  vector<unique_ptr<ExprAST>> _shape;
+  vector<unique_ptr<ExprAST>> _data;
   string _ident;
+
+  vector<int> getShapeArray() const
+  {
+    vector<int> v;
+    for (auto &p : _data)
+      v.push_back(p->eval());
+    return v;
+  }
 
   ArrayRefAST(string *ident) : _ident(*unique_ptr<string>(ident)) {}
 
-  string dump() const override
+  string dump() const override { return format("@{}", *GetTableStack().rename(_ident)); }
+
+  string dump_shape() const
   {
-    return "";
+    auto shape = getShapeArray();
+    reverse(shape.begin(), shape.end());
+    string str = "i32";
+    for (auto x : shape)
+    {
+      str = format("[{},{}]", str, x);
+    }
+    return str;
   }
 };

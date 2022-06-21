@@ -264,9 +264,7 @@ PrimaryExp
     $$ = $2;
   }
   | Number {
-    auto ast = new ConstExprAST(); 
-    ast->_num = unique_ptr<NumberAST>($1);
-    $$ = ast; 
+    $$ = new ConstExprAST($1); 
   }
   | LVal {
     $$ = $1;
@@ -304,9 +302,7 @@ FuncCallParamList :
 
 Number
   : INT_CONST {
-    auto ast = new NumberAST(); 
-    ast->value = $1; 
-    $$ = ast;
+    $$ = new NumberAST($1); 
   }
   ;
 
@@ -466,11 +462,11 @@ OpenStmt
 ArrayRef  
   : IDENT '[' ConstExp ']' {
     $$ = new ArrayRefAST($1);
-    $$->_shape.emplace_back($3);
+    $$->_data.emplace_back($3);
   }
   | ArrayRef '[' ConstExp ']' {
     $$ = $1;
-    $$->_shape.emplace_back($3);
+    $$->_data.emplace_back($3);
   }
   ;
 

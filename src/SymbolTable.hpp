@@ -34,13 +34,15 @@ enum class SymbolTypes
   Func,
   FuncParamVar,
   Str,
-  Const
+  Const,
+  Array,
+  GlobalArray
 };
 
 struct Symbol
 {
   SymbolTypes _type;
-  std::variant<int, string, BaseTypes> _data;
+  std::variant<int, string, BaseTypes, vector<int>> _data;
 };
 
 class SymbolTable
