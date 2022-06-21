@@ -24,11 +24,6 @@ using namespace std;
 // 解析完成后, 我们要手动修改这个参数, 把它设置成解析得到的字符串
 %parse-param { PBase &ast }
 
-// yylval 的定义, 我们把它定义成了一个联合体 (union)
-// 因为 token 的值有的是字符串指针, 有的是整数
-// 之前我们在 lexer 中用到的 str_val 和 int_val 就是在这里被定义的
-// 至于为什么要用字符串指针而不直接用 string 或者 unique_ptr<string>?
-// 请自行 STFW 在 union 里写一个带析构函数的类会出现什么情况
 %union {
   std::string *str_val;
   int int_val;
@@ -37,17 +32,19 @@ using namespace std;
   NumberAST *number_ast_val; 
   BlockAST *blk_ast_val; 
   std::vector<PBase> *vec_val;
+  ArrayRefAST *array_ref_ast_val; 
+  ArrayInitListAST *array_init_list_val;
+  ArrayDefAST *array_def_ast_val;
+  LValExprAST *lval_ast_val;
 }
 
-// lexer 返回的所有 token 种类的声明
-// 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
 %token INT RETURN  AND_CONST OR_CONST CONST IF ELSE WHILE BREAK CONTINUE VOID
 %token <str_val> IDENT REL_OP EQ_OP
 %token <int_val> INT_CONST
 
-// 非终结符的类型定义
-%type <str_val> UnaryOp LVal
-%type <ast_val> FuncDef Stmt 
+%type <str_val> UnaryOp 
+%type <lval_ast_val> LVal
+%type <ast_val> FuncDef Stmt
 %type <number_ast_val> Number  
 %type <ast_val> Decl ConstDecl ConstDef
 %type <blk_ast_val> Block
@@ -55,6 +52,9 @@ using namespace std;
 %type <vec_val> BlockItemList ConstDefList VarDefList CompUnitList FuncDefParamList FuncCallParamList 
 %type <ast_val> VarDecl VarDef BlockItem FuncDefParam
 %type <ast_val> OpenStmt ClosedStmt SimpleStmt 
+%type <array_init_list_val> ArrayInitList
+%type <array_ref_ast_val> ArrayRef
+%type <vec_val> ArrayInitListInner
 
 
 %%
@@ -154,10 +154,7 @@ SimpleStmt
     $$ = new RetStmtAST(); 
   }
   | LVal '=' Exp ';' {
-    auto ast = new AssignAST();
-    ast->_id = unique_ptr<string>($1);
-    ast->_r = PBase($3);
-    $$ = ast;
+    $$ = new AssignAST($1, $3);
   }
   | Block {
     $$ = $1;
@@ -272,9 +269,7 @@ PrimaryExp
     $$ = ast; 
   }
   | LVal {
-    auto ast = new LValExprAST(); 
-    ast->_ident = *unique_ptr<string>($1);
-    $$ = ast; 
+    $$ = $1;
   }
   ;
 
@@ -334,15 +329,7 @@ ConstDecl
   }
   ;
 
-ConstDef
-  : IDENT '=' ConstInitVal {
-    auto ast = new DefAST(
-      DeclTypes::Const,
-      *unique_ptr<string>($1), // ident
-      unique_ptr<ExprAST>($3)); // init
-    $$ = ast;
-  }
-  ;
+
 
 ConstInitVal
   : ConstExp {
@@ -352,7 +339,10 @@ ConstInitVal
 
 LVal 
   : IDENT {
-    $$ = $1;
+    $$ = new LValVarExprAST($1); 
+  }
+  | ArrayRef {
+     $$ = new LValArrayRefExprAST($1); 
   }
   ;
 
@@ -380,6 +370,12 @@ VarDef
   | IDENT '=' InitVal {
     auto ast = new DefAST(DeclTypes::Variable, *unique_ptr<string>($1), unique_ptr<ExprAST>($3));
     $$ = ast;
+  }
+  | ArrayRef '=' ArrayInitList {
+    $$ = new ArrayDefAST(DeclTypes::Variable, $1, $3);
+  }
+  | ArrayRef {
+    $$ = new ArrayDefAST(DeclTypes::Variable, $1);
   }
   ;
 
@@ -464,6 +460,51 @@ OpenStmt
     $$ = new WhileStmtAST($3, $5);
   }
   ;
+
+
+
+ArrayRef  
+  : IDENT '[' ConstExp ']' {
+    $$ = new ArrayRefAST($1);
+    $$->_shape.emplace_back($3);
+  }
+  | ArrayRef '[' ConstExp ']' {
+    $$ = $1;
+    $$->_shape.emplace_back($3);
+  }
+  ;
+
+ArrayInitList 
+  : '{'  '}' {
+    $$ = new ArrayInitListAST(); 
+  }
+  | '{' ArrayInitListInner '}' {
+    $$ = new ArrayInitListAST($2); 
+  }
+  ;
+
+ArrayInitListInner
+  : ConstExp  {
+    $$ = new vector<unique_ptr<BaseAST>>();
+    $$->emplace_back($1);
+  }
+  | ArrayInitListInner ',' ConstExp {
+    $$ = $1;
+    $$->emplace_back($3);
+  }
+  ;
+
+ConstDef 
+  : ArrayRef '=' ArrayInitList {
+    $$ = new ArrayDefAST(DeclTypes::Const, $1, $3);
+  }
+  | ArrayRef {
+    $$ = new ArrayDefAST(DeclTypes::Const, $1);
+  }
+  | IDENT '=' ConstInitVal {
+    $$ = new DefAST(DeclTypes::Const, *unique_ptr<string>($1), unique_ptr<ExprAST>($3));
+  }
+  
 %%
 
 // 定义错误处理函数, 其中第二个参数是错误信息

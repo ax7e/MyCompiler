@@ -18,8 +18,10 @@ using fmt::format;
 using fmt::formatter;
 using std::endl;
 using std::logic_error;
+using std::make_pair;
 using std::map;
 using std::optional;
+using std::pair;
 using std::string;
 using std::to_string;
 using std::unique_ptr;
@@ -240,7 +242,13 @@ struct ConstExprAST : public ExprAST
 
 struct LValExprAST : public ExprAST
 {
+  virtual std::pair<string, string> dump_ref() const = 0;
+};
+
+struct LValVarExprAST : public LValExprAST
+{
   string _ident;
+  LValVarExprAST(string *ident) : _ident(*unique_ptr<string>(ident)) {}
   string dump() const override
   {
     auto r = GetTableStack().query(_ident);
@@ -260,33 +268,42 @@ struct LValExprAST : public ExprAST
       return format("%{}", _id);
     }
   }
-  string dump_inst() const override
+  pair<string, string> dump_ref() const override
   {
     auto r = GetTableStack().query(_ident);
     assert(r.has_value());
     if (r->_type == SymbolTypes::Var)
-    {
-      _id = GetSlotAllocator().getSlot();
-      return format("\t%{} = load %{}\n", _id, *GetTableStack().rename(_ident));
-    }
+      return make_pair("", format("%{}", *GetTableStack().rename(_ident)));
     else if (r->_type == SymbolTypes::GlobalVar)
-    {
-      _id = GetSlotAllocator().getSlot();
-      return format("\t%{} = load @{}\n", _id, *GetTableStack().rename(_ident));
-    }
+      return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
+    // For function parameter, we will only manimanipulate its local copy
     else if (r->_type == SymbolTypes::FuncParamVar)
     {
       auto name = *GetTableStack().rename(_ident);
       GetTableStack().insert(_ident, Symbol{SymbolTypes::Var, BaseTypes::Integer});
       auto localName = *GetTableStack().rename(_ident);
 
-      auto res = format("\t%{} = alloc i32\n", localName);
-      res += format("\tstore @{},%{}\n", name, localName);
-      _id = GetSlotAllocator().getSlot();
-      res += format("\t%{} = load %{}\n", _id, localName);
-      return res;
+      auto pre = format("\t%{} = alloc i32\n", localName);
+      pre += format("\tstore @{},%{}\n", name, localName);
+      return make_pair(pre, "%" + localName);
     }
-    return "";
+    else
+    {
+      throw logic_error("try to get ref on wrong variable");
+    }
+  }
+  string dump_inst() const override
+  {
+    try
+    {
+      auto p = dump_ref();
+      _id = GetSlotAllocator().getSlot();
+      return format("{}\t%{} = load {}\n", p.first, _id, p.second);
+    }
+    catch (std::logic_error &e)
+    {
+      return "";
+    }
   }
   int eval() const override
   {
@@ -294,6 +311,25 @@ struct LValExprAST : public ExprAST
     assert(res.has_value());
     assert(res->_type == SymbolTypes::Const);
     return get<int>(res->_data);
+  }
+};
+
+class ArrayRefAST;
+struct LValArrayRefExprAST : public LValExprAST
+{
+  unique_ptr<ArrayRefAST> _ref;
+  LValArrayRefExprAST(ArrayRefAST *ref) : _ref(ref) {}
+  string dump() const override
+  {
+    return "";
+  }
+  string dump_inst() const override
+  {
+    return "";
+  }
+  pair<string, string> dump_ref() const override
+  {
+    return make_pair(string(), string());
   }
 };
 
@@ -632,16 +668,15 @@ public:
 class AssignAST : public BaseAST
 {
 public:
-  unique_ptr<string> _id;
-  PBase _r;
+  unique_ptr<LValExprAST> _l;
+  unique_ptr<ExprAST> _r;
+  AssignAST(LValExprAST *l, ExprAST *r) : _l(l), _r(r) {}
   string dump() const override
   {
-    auto &r = dynamic_cast<ExprAST &>(*_r);
     string code;
-    code += r.dump_inst();
-    auto type = GetTableStack().query(*_id)->_type;
-    auto mark = type == SymbolTypes::GlobalVar ? "@" : "%";
-    code += format("\tstore {}, {}{}\n", r.dump(), mark, *GetTableStack().rename(*_id));
+    code += _r->dump_inst();
+    auto ref = _l->dump_ref();
+    code += format("\t{}store {}, {}\n", ref.first, _r->dump(), ref.second);
     return code;
   }
 };
@@ -731,5 +766,56 @@ class ContinueStmt : public BaseAST
     inst += format("\tjump %{}\n", std::get<string>(GetTableStack().query("while_entry")->_data));
     inst += format("%while_body_{}:\n", GenID());
     return inst;
+  }
+};
+
+class ArrayInitListAST;
+class ArrayRefAST;
+
+struct ArrayDefAST : public BaseAST
+{
+  DeclTypes _type;
+  unique_ptr<ArrayRefAST> _arrayType;
+  optional<unique_ptr<ArrayInitListAST>> _init;
+  ArrayDefAST(DeclTypes type, ArrayRefAST *arrayType, ArrayInitListAST *init = nullptr)
+      : _type(type), _arrayType(arrayType)
+  {
+    if (init)
+    {
+      _init = unique_ptr<ArrayInitListAST>(init);
+    }
+  }
+  string dump() const override
+  {
+    return "";
+  }
+};
+
+struct ArrayInitListAST : public BaseAST
+{
+  vector<unique_ptr<BaseAST>> _list;
+  ArrayInitListAST(vector<unique_ptr<BaseAST>> *list = nullptr)
+  {
+    if (list)
+    {
+      _list = move(*unique_ptr<vector<unique_ptr<BaseAST>>>(list));
+    }
+  }
+  string dump() const override
+  {
+    return "";
+  }
+};
+
+struct ArrayRefAST : public BaseAST
+{
+  vector<unique_ptr<ExprAST>> _shape;
+  string _ident;
+
+  ArrayRefAST(string *ident) : _ident(*unique_ptr<string>(ident)) {}
+
+  string dump() const override
+  {
+    return "";
   }
 };
