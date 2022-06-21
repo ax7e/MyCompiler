@@ -484,7 +484,15 @@ ArrayInitListInner
     $$ = new vector<unique_ptr<BaseAST>>();
     $$->emplace_back($1);
   }
+  | ArrayInitList  {
+    $$ = new vector<unique_ptr<BaseAST>>();
+    $$->emplace_back($1);
+  }
   | ArrayInitListInner ',' ConstExp {
+    $$ = $1;
+    $$->emplace_back($3);
+  } 
+  | ArrayInitListInner ',' ArrayInitList {
     $$ = $1;
     $$->emplace_back($3);
   }

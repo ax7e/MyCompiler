@@ -1,6 +1,7 @@
 #include "AST.hpp"
 #include <fmt/core.h>
 #include <iostream>
+#include <algorithm>
 #include <functional>
 
 using std::cout;
@@ -118,19 +119,61 @@ const string LibFuncDecl =
     "decl @starttime()\n"
     "decl @stoptime()\n\n";
 
+auto genSize = [](const vector<int> &v)
+{
+  return std::accumulate(
+      v.begin(), v.end(), 1, [](int x, int y)
+      { return x * y; });
+};
+
 vector<int> FormatInitTable(const ArrayRefAST &t, const ArrayInitListAST &p)
 {
   vector<int> shape = t.getShapeArray();
-  int x = 1;
-  for (auto u : shape)
-    x *= u;
-  auto data = vector<int>(x, 0);
+
+  auto sz = genSize(shape);
+  auto data = vector<int>(sz, 0);
+  /*
   int ptr = 0;
   for (const auto &x : p._list)
   {
     auto &t = dynamic_cast<ExprAST &>(*x);
     data[ptr++] = t.eval();
   }
+  */
+  std::function<void(vector<int> shape, const vector<PBase> &v, int idx)> f;
+  f = [&](vector<int> shape, const vector<PBase> &v, int idx)
+  {
+    int k = 0;
+    for (const auto &p : v)
+    {
+      if (typeid(*p) == typeid(ArrayInitListAST))
+      {
+        int t = idx;
+        auto ptr = shape.rbegin();
+        while (ptr != shape.rend())
+        {
+          if (t % *ptr != 0)
+            break;
+          t /= *ptr++;
+        }
+        if (ptr == shape.rend())
+          ptr--;
+        assert(ptr != shape.rbegin());
+        vector<int> s2(shape.rbegin(), ptr);
+        f(s2, dynamic_cast<ArrayInitListAST &>(*p)._list, idx);
+        k += genSize(s2);
+      }
+      else
+      {
+        data[idx + k] = dynamic_cast<ExprAST &>(*p).eval();
+        ++k;
+      }
+      int sz = genSize(shape);
+      for (int i = k; i < sz; ++i)
+        data[idx + i] = 0;
+    }
+  };
+  f(shape, p._list, 0);
   return data;
 }
 
@@ -166,10 +209,16 @@ string FormatInitListToString(const ArrayRefAST &t, const ArrayInitListAST &p)
 
 pair<string, string> LValArrayRefExprAST::dump_ref() const
 {
-  int pos = _ref->getShapeArray()[0];
-  _ptr = GetSlotAllocator().getSlot();
-  auto pre = format("\t%{} = getelemptr {}, {}\n", _ptr, _ref->dump(), pos);
-  return make_pair(pre, format("%{}", _ptr));
+  string ref = _ref->dump();
+  string pre;
+  for (const auto &pos : _ref->_data)
+  {
+    _ptr = GetSlotAllocator().getSlot();
+    auto prei = pos->dump_inst();
+    pre += format("{}\t@p{} = getelemptr {}, {}\n", prei, _ptr, ref, pos->dump());
+    ref = format("@p{}", _ptr);
+  }
+  return make_pair(pre, format("@p{}", _ptr));
 }
 
 ArrayDefAST::ArrayDefAST(DeclTypes type, ArrayRefAST *arrayType, ArrayInitListAST *init)
@@ -197,13 +246,10 @@ string ArrayDefAST::dump() const
     string name = *GetTableStack().rename(_arrayType->_ident);
     res = format("\t@{} = alloc {}\n", name, _arrayType->dump_shape());
 
-    // TODO:multidimension
     if (_init)
     {
       res += format("\tstore zeroinit, @{}\n", name);
-      int n = _arrayType->getShapeArray()[0];
       auto data = FormatInitTable(*_arrayType, *_init.value());
-      assert((int)data.size() == n);
       auto dumpAssign = [&](vector<int> pos, int x)
       {
         auto ref = new ArrayRefAST(new string(_arrayType->_ident));
@@ -213,11 +259,24 @@ string ArrayDefAST::dump() const
         return stmt->dump();
       };
       int cnt = 0;
+      auto shape = _arrayType->getShapeArray();
+      int n = genSize(shape);
+      auto iToPos = [&](int i)
+      {
+        vector<int> r;
+        for (auto p = shape.rbegin(); p < shape.rend(); ++p)
+        {
+          r.push_back(i % *p);
+          i /= *p;
+        }
+        reverse(r.begin(), r.end());
+        return r;
+      };
       for (int i = 0; i < n; ++i)
       {
         auto val = data[cnt++];
         if (val)
-          res += dumpAssign(vector<int>{i}, val);
+          res += dumpAssign(iToPos(i), val);
       }
     }
     else

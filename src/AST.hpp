@@ -1,7 +1,9 @@
 #pragma once
 
 #include <fmt/format.h>
+#include <numeric>
 #include <iostream>
+#include <algorithm>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -16,6 +18,7 @@
 
 using fmt::format;
 using fmt::formatter;
+using std::accumulate;
 using std::endl;
 using std::logic_error;
 using std::make_pair;
@@ -276,7 +279,7 @@ struct LValVarExprAST : public LValExprAST
     auto r = GetTableStack().query(_ident);
     assert(r.has_value());
     if (r->_type == SymbolTypes::Var)
-      return make_pair("", format("%{}", *GetTableStack().rename(_ident)));
+      return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
     else if (r->_type == SymbolTypes::GlobalVar)
       return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
     // For function parameter, we will only manimanipulate its local copy
@@ -382,7 +385,7 @@ struct BinaryExprAST : public ExprAST
       //  store %t3, %t0
       //%end:
       //  id = load %t0
-      auto t0 = format("@{}", GetSlotAllocator().getSlot());
+      auto t0 = format("@p{}", GetSlotAllocator().getSlot());
       auto t1 = format("%{}", GetSlotAllocator().getSlot());
       auto t2 = format("%{}", GetSlotAllocator().getSlot());
       auto tagEntry = format("%shortcut_entry_{}", GenID());
@@ -661,7 +664,7 @@ public:
         {
           auto &p = dynamic_cast<ExprAST &>(*_init.value());
           calc += p.dump_inst();
-          calc += format("\tstore {}, %{}\n", p.dump(), r);
+          calc += format("\tstore {}, @{}\n", p.dump(), r);
         }
       }
     }
