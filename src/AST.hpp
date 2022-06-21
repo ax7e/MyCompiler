@@ -274,6 +274,18 @@ struct LValExprAST : public ExprAST
       _id = GetSlotAllocator().getSlot();
       return format("\t%{} = load @{}\n", _id, *GetTableStack().rename(_ident));
     }
+    else if (r->_type == SymbolTypes::FuncParamVar)
+    {
+      auto name = *GetTableStack().rename(_ident);
+      GetTableStack().insert(_ident, Symbol{SymbolTypes::Var, BaseTypes::Integer});
+      auto localName = *GetTableStack().rename(_ident);
+
+      auto res = format("\t%{} = alloc i32\n", localName);
+      res += format("\tstore @{},%{}\n", name, localName);
+      _id = GetSlotAllocator().getSlot();
+      res += format("\t%{} = load %{}\n", _id, localName);
+      return res;
+    }
     return "";
   }
   int eval() const override

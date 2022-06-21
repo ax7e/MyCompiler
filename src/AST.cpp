@@ -85,24 +85,15 @@ string FuncDefAST::dump() const
   GetTableStack().insert(_ident, Symbol{SymbolTypes::Func, _type});
   GetSlotAllocator().clear();
   string res = format("fun @{}(", _ident);
-  GetTableStack().push();
   for (auto &p : _params)
   {
-    GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident, Symbol{SymbolTypes::Var, BaseTypes::Integer});
+    GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident, Symbol{SymbolTypes::FuncParamVar, BaseTypes::Integer});
   }
-  GetTableStack().banPush();
   res += DumpList(_params);
   res += format(")");
   if (_type != BaseTypes::Void)
     res += format(": {} ", _type);
   res += format("{{\n%entry:\n");
-  for (auto &pp : _params)
-  {
-    auto &p = dynamic_cast<FuncDefParamAST &>(*pp);
-    auto name = *GetTableStack().rename(p._ident);
-    res += format("\t%{} = alloc i32\n", name);
-    res += format("\tstore @{},%{}\n", name, name);
-  }
   string blk = format("{}", *_block);
   res += blk;
   if (!_block->hasRetStmt())

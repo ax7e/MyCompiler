@@ -32,6 +32,7 @@ enum class SymbolTypes
   Var,
   GlobalVar,
   Func,
+  FuncParamVar,
   Str,
   Const
 };
