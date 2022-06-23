@@ -1,12 +1,14 @@
 #include "AST.hpp"
-#include "Generator.hpp"
 #include "fmt/core.h"
+#include <sstream>
 #include "koopa.h"
 #include <cassert>
 #include <cstdio>
 #include <iostream>
 #include <memory>
+#include <bits/stdc++.h>
 #include <string>
+#include "RISCV.h"
 
 using namespace std;
 
@@ -53,6 +55,7 @@ int main(int argc, const char *argv[])
   }
   else if (string(mode) == "-riscv")
   {
+    /*
     koopa_program_t program;
     koopa_error_code_t ret = koopa_parse_from_string(ir.data(), &program);
     assert(ret == KOOPA_EC_SUCCESS);
@@ -64,9 +67,14 @@ int main(int argc, const char *argv[])
     g.Visit(raw);
 
     koopa_delete_program(program);
-
     koopa_delete_raw_program_builder(builder);
     fmt::print(yyout, g.getAssembly());
+    */
+
+    ofstream os(output, ios::out);
+    koopa_ir_from_str(ir, os, kirinfo);
+    os.close();
+    return 0;
   }
   else
   {
