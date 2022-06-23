@@ -36,7 +36,7 @@ typedef unique_ptr<BaseAST> PBase;
 enum class BaseTypes
 {
   Integer,
-  FloatNumber,
+  Array,
   Void
 };
 enum class DeclTypes
@@ -158,15 +158,14 @@ public:
 };
 
 class BlockAST;
+class ArrayRefAST;
 class FuncDefParamAST : public BaseAST
 {
 public:
   BaseTypes _type;
   string _ident;
-  string dump() const override
-  {
-    return format("@{}:{}", *GetTableStack().rename(_ident), _type);
-  }
+  unique_ptr<ArrayRefAST> _info;
+  string dump() const override;
 };
 
 class FuncDefAST : public BaseAST
@@ -274,37 +273,33 @@ struct LValVarExprAST : public LValExprAST
       return format("%{}", _id);
     }
   }
-  pair<string, string> dump_ref() const override
-  {
-    auto r = GetTableStack().query(_ident);
-    assert(r.has_value());
-    if (r->_type == SymbolTypes::Var)
-      return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
-    else if (r->_type == SymbolTypes::GlobalVar)
-      return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
-    // For function parameter, we will only manimanipulate its local copy
-    else if (r->_type == SymbolTypes::FuncParamVar)
-    {
-      auto name = *GetTableStack().rename(_ident);
-      GetTableStack().insert(_ident, Symbol{SymbolTypes::Var, BaseTypes::Integer});
-      auto localName = *GetTableStack().rename(_ident);
 
-      auto pre = format("\t@{} = alloc i32\n", localName);
-      pre += format("\tstore @{},@{}\n", name, localName);
-      return make_pair(pre, "@" + localName);
-    }
-    else
-    {
-      throw logic_error("try to get ref on wrong variable");
-    }
-  }
+  pair<string, string> dump_ref() const override;
   string dump_inst() const override
   {
     try
     {
       auto p = dump_ref();
-      _id = GetSlotAllocator().getSlot();
-      return format("{}\t%{} = load {}\n", p.first, _id, p.second);
+      auto r = GetTableStack().query(_ident);
+      string res;
+      if (r->_type == SymbolTypes::Array)
+      {
+        _id = GetSlotAllocator().getSlot();
+        res += format("\t%{} = getelemptr {}, 0\n", _id, p.second);
+        return res;
+      }
+      else if (r->_type == SymbolTypes::ArrayPtr) {
+        _id = GetSlotAllocator().getSlot();
+        auto tid = format("%{}", GetSlotAllocator().getSlot());
+        res += format("\t{} = load {}\n", tid, p.second);
+        res += format("\t%{} = getelemptr {}, 0\n", _id, p.second);
+        return res;
+      }
+      else
+      {
+        _id = GetSlotAllocator().getSlot();
+        return format("{}\t%{} = load {}\n", p.first, _id, p.second);
+      }
     }
     catch (std::logic_error &e)
     {
@@ -323,20 +318,28 @@ struct LValVarExprAST : public LValExprAST
 class ArrayRefAST;
 struct LValArrayRefExprAST : public LValExprAST
 {
-  mutable int _ptr = -1;
   unique_ptr<ArrayRefAST> _ref;
   LValArrayRefExprAST(ArrayRefAST *ref) : _ref(ref) {}
+  /**
+   * @brief return value
+   * @details Notice that dump will have different meanings based on the dimensions
+   *
+   * If _ref->_data->size() == array_dim:
+   *
+   *  This is an reference to the array value, we should dump value
+   *
+   * Else if _ref->_data->size() < array_dim:
+   *
+   *  This happens during array param evaluation, we should dump pointer to the first element
+   *
+   * @return string
+   */
   string dump() const override
   {
     assert(_id != -1);
     return format("%{}", _id);
   }
-  string dump_inst() const override
-  {
-    _id = GetSlotAllocator().getSlot();
-    auto res = dump_ref();
-    return format("{}\t%{} = load {}\n", res.first, _id, res.second);
-  }
+  string dump_inst() const override;
   pair<string, string> dump_ref() const;
 };
 
@@ -407,7 +410,7 @@ struct BinaryExprAST : public ExprAST
       calc += format("\tstore {}, {}\n", t2, t0);
       calc += format("\tjump {}\n", tagEnd);
       calc += format("{}:\n", tagEnd);
-      calc += format("\t%{} = load {}", _id, t0);
+      calc += format("\t%{} = load {}\n", _id, t0);
       return calc;
     }
     else if (_op == "&&")
@@ -822,17 +825,27 @@ struct ArrayRefAST : public BaseAST
 
   ArrayRefAST(string *ident) : _ident(*unique_ptr<string>(ident)) {}
 
-  string dump() const override { return format("@{}", *GetTableStack().rename(_ident)); }
+  string dump() const override { 
+    throw logic_error("calling deleted function");
+  }
+
+  pair<string,string> dump_ref() const  {
+    auto r = GetTableStack().query(_ident);
+    if (r->_type == SymbolTypes::Array || r->_type == SymbolTypes::GlobalArray) {
+      return make_pair("", format("@{}",*GetTableStack().rename(_ident)));
+    }
+    else {
+      assert(r->_type == SymbolTypes::ArrayPtr);
+      auto _id = GetSlotAllocator().getSlot();
+      auto pre = format("\t%{} = load @{}\n", _id, *GetTableStack().rename(_ident));
+      return make_pair(pre, format("%{}", _id));
+    }
+
+  }
 
   string dump_shape() const
   {
-    auto shape = getShapeArray();
-    reverse(shape.begin(), shape.end());
-    string str = "i32";
-    for (auto x : shape)
-    {
-      str = format("[{},{}]", str, x);
-    }
-    return str;
+    return get_shape(getShapeArray());
   }
+  static string get_shape(vector<int> shape);
 };

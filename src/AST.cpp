@@ -89,7 +89,15 @@ string FuncDefAST::dump() const
   string res = format("fun @{}(", _ident);
   for (auto &p : _params)
   {
-    GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident, Symbol{SymbolTypes::FuncParamVar, BaseTypes::Integer});
+    if (p->_type == BaseTypes::Integer)
+      GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident,
+                             Symbol{SymbolTypes::FuncParamVar, BaseTypes::Integer});
+    else
+    {
+      assert(p->_type == BaseTypes::Array);
+      GetTableStack().insert(dynamic_cast<FuncDefParamAST &>(*p)._ident,
+                             Symbol{SymbolTypes::FuncParamArrayVar, p->_info->getShapeArray()});
+    }
   }
   res += DumpList(_params);
   res += format(")");
@@ -209,15 +217,37 @@ string FormatInitListToString(const ArrayRefAST &t, const ArrayInitListAST &p)
 
 pair<string, string> LValArrayRefExprAST::dump_ref() const
 {
-  string ref = _ref->dump();
-  string pre;
+  auto r = GetTableStack().query(_ref->_ident);
+  string pre, ref;
+  if (r->_type == SymbolTypes::FuncParamArrayVar)
+  {
+
+    auto name = *GetTableStack().rename(_ref->_ident);
+    GetTableStack().insert(_ref->_ident, Symbol{SymbolTypes::ArrayPtr, r->_data});
+    auto localName = *GetTableStack().rename(_ref->_ident);
+
+    pre += format("\t@{} = alloc {}\n", localName, ArrayRefAST::get_shape(get<vector<int>>(r->_data)));
+    pre += format("\tstore @{},@{}\n", name, localName);
+    ref = format("@p{}", GetSlotAllocator().getSlot());
+    pre += format("\t{} =  load @{}\n", ref, localName);
+  }
+  else
+  {
+    auto r = _ref->dump_ref();
+    pre += r.first;
+    ref = r.second;
+  }
+  vector<int> shape = get<vector<int>>(GetTableStack().query(_ref->_ident)->_data);
+  int k = 0, _ptr;
   for (const auto &pos : _ref->_data)
   {
     _ptr = GetSlotAllocator().getSlot();
     auto prei = pos->dump_inst();
-    pre += format("{}\t@p{} = getelemptr {}, {}\n", prei, _ptr, ref, pos->dump());
+    string inst = shape[k++] == 0 ? "getptr" : "getelemptr";
+    pre += format("{}\t@p{} = {} {}, {}\n", prei, _ptr, inst, ref, pos->dump());
     ref = format("@p{}", _ptr);
   }
+
   return make_pair(pre, format("@p{}", _ptr));
 }
 
@@ -286,4 +316,80 @@ string ArrayDefAST::dump() const
   }
 
   return res;
+}
+
+string ArrayRefAST::get_shape(vector<int> shape)
+{
+  reverse(shape.begin(), shape.end());
+  string str = "i32";
+  for (auto x : shape)
+  {
+    if (x)
+    {
+      str = format("[{},{}]", str, x);
+    }
+    else
+    {
+      str = format("*{}", str);
+    }
+  }
+  return str;
+}
+
+string FuncDefParamAST::dump() const
+{
+  if (_type != BaseTypes::Array)
+    return format("@{}:{}", *GetTableStack().rename(_ident), _type);
+  else
+    return format("@{}:{}", *GetTableStack().rename(_ident), _info->dump_shape());
+}
+
+pair<string, string> LValVarExprAST::dump_ref() const
+{
+  auto r = GetTableStack().query(_ident);
+  assert(r.has_value());
+  if (r->_type == SymbolTypes::Var)
+    return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
+  else if (r->_type == SymbolTypes::GlobalVar)
+    return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
+  else if (r->_type == SymbolTypes::Array)
+    return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
+  else if (r->_type == SymbolTypes::ArrayPtr)
+    return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
+  // For function parameter, we will only manimanipulate its local copy
+  else if (r->_type == SymbolTypes::FuncParamVar)
+  {
+    auto name = *GetTableStack().rename(_ident);
+    GetTableStack().insert(_ident, Symbol{SymbolTypes::Var, BaseTypes::Integer});
+    auto localName = *GetTableStack().rename(_ident);
+
+    auto pre = format("\t@{} = alloc i32\n", localName);
+    pre += format("\tstore @{},@{}\n", name, localName);
+    return make_pair(pre, "@" + localName);
+  }
+  else if (r->_type == SymbolTypes::FuncParamArrayVar)
+  {
+    auto name = *GetTableStack().rename(_ident);
+    GetTableStack().insert(_ident, Symbol{SymbolTypes::ArrayPtr, r->_data});
+    auto localName = *GetTableStack().rename(_ident);
+
+    auto pre = format("\t@{} = alloc {}\n", localName, ArrayRefAST::get_shape(get<vector<int>>(r->_data)));
+    pre += format("\tstore @{},@{}\n", name, localName);
+    return make_pair(pre, "@" + localName);
+  }
+  else
+  {
+    throw logic_error("try to get ref on wrong variable");
+  }
+}
+
+string LValArrayRefExprAST::dump_inst() const
+{
+  _id = GetSlotAllocator().getSlot();
+  auto res = dump_ref();
+  auto shape = get<vector<int>>(GetTableStack().query(_ref->_ident)->_data);
+  if (_ref->_data.size() < shape.size())
+    return format("{}\t%{} = getelemptr {}, {}\n", res.first, _id, res.second, 0);
+  else
+    return format("{}\t%{} = load {}\n", res.first, _id, res.second);
 }

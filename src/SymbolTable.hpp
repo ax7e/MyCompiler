@@ -33,9 +33,11 @@ enum class SymbolTypes
   GlobalVar,
   Func,
   FuncParamVar,
+  FuncParamArrayVar,
   Str,
   Const,
   Array,
+  ArrayPtr,
   GlobalArray
 };
 

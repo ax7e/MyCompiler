@@ -128,7 +128,11 @@ FuncDefParam
     $$ = t;
   }
   | ArrayParam {
-    $$ = $1;
+    auto t = new FuncDefParamAST();
+    t->_ident = $1->_ident;
+    t->_type = BaseTypes::Array;
+    t->_info = unique_ptr<ArrayRefAST>($1);
+    $$ = t;
   }
   ;
 
@@ -476,7 +480,7 @@ ArrayRef
 ArrayParam
   : INT IDENT '[' ']' {
     $$ = new ArrayRefAST($2);
-    $$->_data.emplace_back(new NumberExprAST(new NumberAST(-1)));
+    $$->_data.emplace_back(new NumberExprAST(new NumberAST(0)));
   }
   | ArrayParam '[' ConstExp ']' {
     $$ = $1;
