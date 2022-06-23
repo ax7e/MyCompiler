@@ -87,6 +87,7 @@ string FuncDefAST::dump() const
   GetTableStack().insert(_ident, Symbol{SymbolTypes::Func, _type});
   GetSlotAllocator().clear();
   string res = format("fun @{}(", _ident);
+  GetTableStack().push();
   for (auto &p : _params)
   {
     if (p->_type == BaseTypes::Integer)
@@ -109,6 +110,7 @@ string FuncDefAST::dump() const
   if (!_block->hasRetStmt())
     res += "\tret\n";
   res += format("}}\n");
+  GetTableStack().pop();
   return res;
 }
 
@@ -353,6 +355,8 @@ pair<string, string> LValVarExprAST::dump_ref() const
   else if (r->_type == SymbolTypes::GlobalVar)
     return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
   else if (r->_type == SymbolTypes::Array)
+    return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
+  else if (r->_type == SymbolTypes::GlobalArray)
     return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
   else if (r->_type == SymbolTypes::ArrayPtr)
     return make_pair("", format("@{}", *GetTableStack().rename(_ident)));

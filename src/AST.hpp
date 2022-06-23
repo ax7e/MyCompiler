@@ -282,17 +282,15 @@ struct LValVarExprAST : public LValExprAST
       auto p = dump_ref();
       auto r = GetTableStack().query(_ident);
       string res;
-      if (r->_type == SymbolTypes::Array)
+      if (r->_type == SymbolTypes::Array || r->_type == SymbolTypes::GlobalArray)
       {
         _id = GetSlotAllocator().getSlot();
-        res += format("\t%{} = getelemptr {}, 0\n", _id, p.second);
+        res += format("{}\t%{} = getelemptr {}, 0\n", p.first, _id, p.second);
         return res;
       }
       else if (r->_type == SymbolTypes::ArrayPtr) {
         _id = GetSlotAllocator().getSlot();
-        auto tid = format("%{}", GetSlotAllocator().getSlot());
-        res += format("\t{} = load {}\n", tid, p.second);
-        res += format("\t%{} = getelemptr {}, 0\n", _id, p.second);
+        res += format("{}\t%{} = load {}\n", p.first, _id, p.second);
         return res;
       }
       else
