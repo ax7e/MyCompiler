@@ -254,8 +254,8 @@ string ArrayDefAST::dump() const
       {
         auto ref = new ArrayRefAST(new string(_arrayType->_ident));
         for (auto &p : pos)
-          ref->_data.emplace_back(new ConstExprAST(new NumberAST(p)));
-        auto stmt = new AssignAST(new LValArrayRefExprAST(ref), new ConstExprAST(new NumberAST(x)));
+          ref->_data.emplace_back(new NumberExprAST(new NumberAST(p)));
+        auto stmt = new AssignAST(new LValArrayRefExprAST(ref), new NumberExprAST(new NumberAST(x)));
         return stmt->dump();
       };
       int cnt = 0;

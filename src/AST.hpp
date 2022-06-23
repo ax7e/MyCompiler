@@ -234,12 +234,12 @@ public:
   }
 };
 
-struct ConstExprAST : public ExprAST
+struct NumberExprAST : public ExprAST
 {
   unique_ptr<NumberAST> _num;
   string dump() const override { return format("{}", *_num); }
   string dump_inst() const { return ""; }
-  ConstExprAST(NumberAST *num) : _num(num) {}
+  NumberExprAST(NumberAST *num) : _num(num) {}
   int eval() const override
   {
     return _num->value;
@@ -289,9 +289,9 @@ struct LValVarExprAST : public LValExprAST
       GetTableStack().insert(_ident, Symbol{SymbolTypes::Var, BaseTypes::Integer});
       auto localName = *GetTableStack().rename(_ident);
 
-      auto pre = format("\t%{} = alloc i32\n", localName);
-      pre += format("\tstore @{},%{}\n", name, localName);
-      return make_pair(pre, "%" + localName);
+      auto pre = format("\t@{} = alloc i32\n", localName);
+      pre += format("\tstore @{},@{}\n", name, localName);
+      return make_pair(pre, "@" + localName);
     }
     else
     {

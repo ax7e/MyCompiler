@@ -53,7 +53,7 @@ using namespace std;
 %type <ast_val> VarDecl VarDef BlockItem FuncDefParam
 %type <ast_val> OpenStmt ClosedStmt SimpleStmt 
 %type <array_init_list_val> ArrayInitList
-%type <array_ref_ast_val> ArrayRef
+%type <array_ref_ast_val> ArrayRef ArrayParam
 %type <vec_val> ArrayInitListInner
 
 
@@ -126,6 +126,9 @@ FuncDefParam
     t->_ident = *unique_ptr<string>($2);
     t->_type = BaseTypes::Void;
     $$ = t;
+  }
+  | ArrayParam {
+    $$ = $1;
   }
   ;
 
@@ -264,7 +267,7 @@ PrimaryExp
     $$ = $2;
   }
   | Number {
-    $$ = new ConstExprAST($1); 
+    $$ = new NumberExprAST($1); 
   }
   | LVal {
     $$ = $1;
@@ -469,6 +472,16 @@ ArrayRef
     $$->_data.emplace_back($3);
   }
   ;
+
+ArrayParam
+  : INT IDENT '[' ']' {
+    $$ = new ArrayRefAST($2);
+    $$->_data.emplace_back(new NumberExprAST(new NumberAST(-1)));
+  }
+  | ArrayParam '[' ConstExp ']' {
+    $$ = $1;
+    $$->_data.emplace_back($3);
+  }
 
 ArrayInitList 
   : '{'  '}' {
