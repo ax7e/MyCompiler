@@ -288,7 +288,8 @@ struct LValVarExprAST : public LValExprAST
         res += format("{}\t%{} = getelemptr {}, 0\n", p.first, _id, p.second);
         return res;
       }
-      else if (r->_type == SymbolTypes::ArrayPtr) {
+      else if (r->_type == SymbolTypes::ArrayPtr)
+      {
         _id = GetSlotAllocator().getSlot();
         res += format("{}\t%{} = load {}\n", p.first, _id, p.second);
         return res;
@@ -823,22 +824,25 @@ struct ArrayRefAST : public BaseAST
 
   ArrayRefAST(string *ident) : _ident(*unique_ptr<string>(ident)) {}
 
-  string dump() const override { 
+  string dump() const override
+  {
     throw logic_error("calling deleted function");
   }
 
-  pair<string,string> dump_ref() const  {
+  pair<string, string> dump_ref() const
+  {
     auto r = GetTableStack().query(_ident);
-    if (r->_type == SymbolTypes::Array || r->_type == SymbolTypes::GlobalArray) {
-      return make_pair("", format("@{}",*GetTableStack().rename(_ident)));
+    if (r->_type == SymbolTypes::Array || r->_type == SymbolTypes::GlobalArray)
+    {
+      return make_pair("", format("@{}", *GetTableStack().rename(_ident)));
     }
-    else {
+    else
+    {
       assert(r->_type == SymbolTypes::ArrayPtr);
       auto _id = GetSlotAllocator().getSlot();
       auto pre = format("\t%{} = load @{}\n", _id, *GetTableStack().rename(_ident));
       return make_pair(pre, format("%{}", _id));
     }
-
   }
 
   string dump_shape() const

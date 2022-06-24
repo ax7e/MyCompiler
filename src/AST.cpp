@@ -108,7 +108,12 @@ string FuncDefAST::dump() const
   string blk = format("{}", *_block);
   res += blk;
   if (!_block->hasRetStmt())
-    res += "\tret\n";
+  {
+    if (_type != BaseTypes::Void)
+      res += "\tret 0\n";
+    else
+      res += "\tret\n";
+  }
   res += format("}}\n");
   GetTableStack().pop();
   return res;
