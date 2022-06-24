@@ -369,9 +369,7 @@ struct BinaryExprAST : public ExprAST
   unique_ptr<ExprAST> _l, _r;
   string dump_inst() const override
   {
-    string calc_l, calc_r, calc;
-    calc_l = _l->dump_inst();
-    calc_r = _r->dump_inst();
+    string calc;
     _id = GetSlotAllocator().getSlot();
     if (_op == "||")
     {
@@ -397,14 +395,14 @@ struct BinaryExprAST : public ExprAST
       calc += format("\tjump {}\n", tagEntry);
       calc += format("{}:\n", tagEntry);
       calc += format("\t{} = alloc i32\n", t0);
-      calc += format("{}", calc_l);
+      calc += format("{}", _l->dump_inst());
       calc += format("\t{} = ne {}, 0\n", t1, _l->dump());
       calc += format("\tbr {}, {}, {}\n", t1, tagThen, tagElse);
       calc += format("{}:\n", tagThen);
       calc += format("store {}, {}", t1, t0);
       calc += format("\tjump {}\n", tagEnd);
       calc += format("{}:\n", tagElse);
-      calc += format("{}", calc_r);
+      calc += format("{}", _r->dump_inst());
       calc += format("\t{} = ne {}, 0\n", t2, _r->dump());
       calc += format("\tstore {}, {}\n", t2, t0);
       calc += format("\tjump {}\n", tagEnd);
@@ -436,11 +434,11 @@ struct BinaryExprAST : public ExprAST
       calc += format("\tjump {}\n", tagEntry);
       calc += format("{}:\n", tagEntry);
       calc += format("\t{} = alloc i32\n", t0);
-      calc += format("{}", calc_l);
+      calc += format("{}", _l->dump_inst());
       calc += format("\t{} = ne {}, 0\n", t1, _l->dump());
       calc += format("\tbr {}, {}, {}\n", t1, tagThen, tagElse);
       calc += format("{}:\n", tagThen);
-      calc += format("{}", calc_r);
+      calc += format("{}", _r->dump_inst());
       calc += format("\t{} = ne {}, 0\n", t2, _r->dump());
       calc += format("\tstore {}, {}\n", t2, t0);
       calc += format("\tjump {}\n", tagEnd);
@@ -448,15 +446,16 @@ struct BinaryExprAST : public ExprAST
       calc += format("\tstore {}, {}\n", t1, t0);
       calc += format("\tjump {}\n", tagEnd);
       calc += format("{}:\n", tagEnd);
-      calc += format("\t%{} = load {}", _id, t0);
+      calc += format("\t%{} = load {}\n", _id, t0);
       return calc;
     }
     else
     {
-      calc = format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
+      calc = format("{}", _l->dump_inst());
+      calc += format("{}", _r->dump_inst());
+      calc += format("\t%{} = {} {}, {}\n", _id, table_binary.at(_op), _l->dump(), _r->dump());
+      return calc;
     }
-
-    return format("{}{}{}", calc_l, calc_r, calc);
   }
   /*
   string dump_inst() const override
