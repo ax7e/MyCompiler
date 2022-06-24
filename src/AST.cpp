@@ -133,6 +133,7 @@ string FuncDefAST::dump() const
   }
   GetTableStack().banPush();
 
+  GetTableStack().insert("$$ret_type$$", Symbol{SymbolTypes::Var, _type});
   string blk = format("{}", *_block);
   res += blk;
   if (!_block->hasRetStmt())

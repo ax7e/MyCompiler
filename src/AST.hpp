@@ -573,8 +573,14 @@ public:
   RetStmtAST(ExprAST *expr = nullptr) : _expr(expr) {}
   string dump() const override
   {
+    auto r = GetTableStack().query("$$ret_type$$");
     if (!_expr)
-      return "\tret\n";
+    {
+      if (get<BaseTypes>(r->_data) == BaseTypes::Void)
+        return "\tret\n";
+      else
+        return "\tret 0\n";
+    }
     auto inst = _expr->dump_inst();
     return format("{}\tret {}\n", inst, _expr->dump());
   }
